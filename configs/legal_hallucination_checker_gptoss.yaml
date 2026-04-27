@@ -1,0 +1,82 @@
+# Data source configuration
+data:
+  # Path to JSONL dataset containing examples
+  dataset_path: 
+  output_path: 
+  # Example ID to run (null = run all examples in batch mode)
+  # For scotus_judgment, this is the case docket (e.g., "23-477")
+  example_id: null
+  
+  # Limit number of examples in batch mode (null = no limit)
+  limit: null
+  shard: null
+  
+  # Skip already completed examples
+  skip_completed: true
+  
+  # Field in JSONL that contains the example ID
+  id_field: filename
+
+# Output directories
+output_dir: outputs      # For logs and batch results
+metrics_dir: metrics     # For per-episode metrics JSON files
+
+# Test mode - set to true to write outputs to test/ subfolders
+# e.g., metrics/{task}/... -> metrics/test/{task}/..., outputs/{task}/... -> outputs/test/{task}/...
+test_run: false
+
+# Agent Configuration
+agent:
+  # Agent model: Used for agent inference (action selection, belief updates, etc.)
+  model:
+    provider: ""  # Provider: openai, openrouter, gemini, sandbox, local (in-process), or della (OpenAI-compatible server)
+    model_id: "gpt-oss-120b"  # Model identifier: gemini-2.5-pro, gpt-4o, gpt-oss-120b, deepseek/deepseek-r1:free
+    temperature: 0.8
+    max_tokens: 4096
+    max_attempts: 3
+    seed: null  # Set to null for randomness
+    # For provider=della (remote OpenAI-compatible local LLM endpoint):
+    host: "localhost"     # Compute node hostname if directly reachable
+    port: 8000            # Required unless base_url is set
+    scheme: "http"
+    base_url: "http://localhost:8000"
+    timeout: 600          # Optional request timeout seconds
+  
+  # Max tokens for different agent inference steps
+  max_tokens:
+    action_selection: 4096  # For action selection calls
+    belief_update: 8192   # For belief update calls
+    prediction: 8192        # For get_current_prediction calls
+    eig_estimate: 4096      # For get_eig_estimate calls
+  
+  thinking_enabled: true
+  closed_search_enabled: false
+  open_web_search_enabled: true
+  courtlistener_search_enabled: true
+  courtlistener_opinion_access_enabled: true
+
+# Evaluation settings
+evaluation:
+  enabled: false  # Master switch for task performance, belief tracking
+  enable_eig_estimation: false  # Post-hoc EIG estimation per step (extra LLM call)
+  enable_action_classification: false  # Task vs design focus scoring per step (extra LLM call)
+  enable_belief_evolution_tracking: false  # Belief complexity analysis per step (extra LLM call)
+
+# Search Configuration
+search:
+  top_k: 3
+
+# Environment settings
+environment:
+  max_steps: 0
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  # Log file path (relative to cwd or absolute). If null or omitted, logs go to console only.
+  file: ./outputs/run_checker.log
+  # Separate file for search results (queries, results, snippets). If null, search logs go to main log.
+  search_results_file: ./outputs/search_results.log
+  # Set to true to write logs to outputs/experiments/{task}/{model}/{method}/ instead of default path based on date/timestamp
+  experiment_logs: false
