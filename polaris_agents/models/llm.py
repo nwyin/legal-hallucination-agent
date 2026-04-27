@@ -3,7 +3,7 @@ import logging
 from .openai_llm import OpenAIChatModel
 from .openrouter_llm import OpenRouterChatModel
 from .gemini_llm import GeminiChatModel
-from .della_inference_llm import DellaInferenceChatModel
+from .vllm_llm import VLLMChatModel
 from .sandbox_llm import SandboxChatModel
 
 logger = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ class ModelAPI:
             "openai": OpenAIChatModel(),
             "openrouter": OpenRouterChatModel(),
             "gemini": GeminiChatModel(),
-            "della": DellaInferenceChatModel(),
+            "vllm": VLLMChatModel(),
             "sandbox": SandboxChatModel()
         }
     
@@ -63,14 +63,14 @@ class ModelAPI:
             model_id: The model identifier
             prompt: The input prompt
             max_attempts: Maximum number of retry attempts
-            provider: The provider to use (openai, openrouter, gemini, della)
+            provider: The provider to use (openai, openrouter, gemini, vllm)
             n: Number of responses to generate
             num_candidates: Number of candidates to generate
             **kwargs: Additional parameters to pass to the provider
         """
         
         if provider is None:
-            raise ValueError("Provider must be specified. Available providers: openai, openrouter, gemini, della")
+            raise ValueError("Provider must be specified. Available providers: openai, openrouter, gemini, vllm")
         
         if provider not in self._providers:
             raise ValueError(f"Provider '{provider}' not supported. Available providers: {list(self._providers.keys())}")

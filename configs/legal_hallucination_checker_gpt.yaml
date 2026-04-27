@@ -29,7 +29,7 @@ test_run: false
 agent:
   # Agent model: Used for agent inference (action selection, belief updates, etc.)
   model:
-    provider: ""  # Provider: openai, openrouter, gemini, sandbox, local (in-process), or della (OpenAI-compatible server)
+    provider: ""  # Provider: openai, openrouter, gemini, sandbox, local (in-process), or vllm (OpenAI-compatible server)
     model_id: "gpt-5"  # Model identifier: gemini-2.5-pro, gpt-4o, gpt-oss-120b, deepseek/deepseek-r1:free
     temperature: 0.8
     max_tokens: 10000

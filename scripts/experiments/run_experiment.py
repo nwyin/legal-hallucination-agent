@@ -185,7 +185,7 @@ def check_required_api_key(provider: str) -> bool:
         "openai": "OPENAI_API_KEY",
         "gemini": "GEMINI_API_KEY",
         "sandbox": "AI_SANDBOX_KEY",
-        "della": None,
+        "vllm": None,
     }
     required_key = key_map.get(provider.lower()) if provider else None
     if required_key and not os.getenv(required_key):
@@ -199,7 +199,7 @@ def configure_model_api(model_api: ModelAPI, model_config: Dict[str, Any], eval_
     """
     Configure provider-specific runtime settings on the shared ModelAPI instance.
 
-    Currently supports `della` endpoint configuration so agent LLM calls can target
+    Currently supports `vllm` endpoint configuration so agent LLM calls can target
     a remote compute-node service instead of localhost.
     """
     providers_in_use = {
@@ -207,12 +207,12 @@ def configure_model_api(model_api: ModelAPI, model_config: Dict[str, Any], eval_
         (eval_model_config or {}).get("provider"),
     }
 
-    if "della" not in providers_in_use:
+    if "vllm" not in providers_in_use:
         return
 
-    della_client = model_api._providers.get("della")
-    if della_client is None:
-        raise ValueError("ModelAPI does not expose a 'della' provider client")
+    vllm_client = model_api._providers.get("vllm")
+    if vllm_client is None:
+        raise ValueError("ModelAPI does not expose a 'vllm' provider client")
 
     # Agent model settings are primary; evaluation model settings can fill in missing values.
     agent_cfg = model_config or {}
@@ -230,20 +230,20 @@ def configure_model_api(model_api: ModelAPI, model_config: Dict[str, Any], eval_
         timeout = eval_cfg.get("timeout")
 
     if base_url:
-        della_client.base_url = str(base_url)
+        vllm_client.base_url = str(base_url)
     if host:
-        della_client.host = str(host)
+        vllm_client.host = str(host)
     if scheme:
-        della_client.scheme = str(scheme)
+        vllm_client.scheme = str(scheme)
     if port is not None:
-        della_client.port = int(port)
+        vllm_client.port = int(port)
     if timeout is not None:
-        della_client.timeout = float(timeout)
+        vllm_client.timeout = float(timeout)
 
     # Fail early with a clear message if no endpoint is configured.
-    if not getattr(della_client, "base_url", None) and getattr(della_client, "port", None) is None:
+    if not getattr(vllm_client, "base_url", None) and getattr(vllm_client, "port", None) is None:
         raise ValueError(
-            "Provider 'della' requires endpoint configuration. "
+            "Provider 'vllm' requires endpoint configuration. "
             "Set agent.model.port (or agent.model.base_url)."
         )
 
@@ -550,7 +550,7 @@ def _create_hallucination_checker_agent(
     agent_class,
 ):
     """Create HallucinationCheckerAgent with task-specific params."""
-    from polaris_agents.models.della_llm import init_local_model
+    from polaris_agents.models.local_llm import init_local_model
     
     brief_name = agent_config.get('brief_name', 'unknown')
     provider = model_config.get('provider', 'sandbox')

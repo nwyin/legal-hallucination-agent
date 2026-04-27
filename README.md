@@ -12,6 +12,8 @@ The agent uses **Bayesian Optimal Experimental Design (BOED)** to strategically 
 - `OPEN_COURTLISTENER_SEARCH` — search CourtListener case database
 - `ACCESS_COURTLISTENER_OPINION` — fetch a full court opinion by ID
 - `SEARCH_LOCAL_OPINION` — search within a previously fetched opinion
+- `READ_DOCUMENT` — read a line-windowed slice of a fetched opinion
+- `EDIT_SCRATCHPAD` — append, insert, replace, or clear the agent's working scratchpad
 - `PROVIDE_FINAL_RESPONSE` — submit final verdict on whether citations are hallucinated
 
 ## Setup
@@ -63,18 +65,18 @@ agent:
 ```
 
 ### `legal_hallucination_checker_gptoss.yaml`
-For a locally-served model via vLLM (della provider):
+For a locally-served model via vLLM (vllm provider):
 
 ```yaml
 agent:
   model:
-    provider: "della"
+    provider: "vllm"
     model_id: "gpt-oss-120b"
     base_url: "http://localhost:8000"
     timeout: 600
 ```
 
-The `della` provider connects to an OpenAI-compatible vLLM endpoint. Start one with:
+The `vllm` provider connects to an OpenAI-compatible vLLM endpoint. Start one with:
 
 ```bash
 bash scripts/start_vllm_gptoss.sh
@@ -88,7 +90,7 @@ bash scripts/start_vllm_gptoss.sh
 | `data.output_path` | Path to write output JSONL |
 | `data.id_field` | Field in JSONL used as example ID |
 | `data.skip_completed` | Skip examples already in output file |
-| `agent.model.provider` | LLM provider (`openai`, `sandbox`, `gemini`, `openrouter`, `local`, `della`) |
+| `agent.model.provider` | LLM provider (`openai`, `sandbox`, `gemini`, `openrouter`, `local`, `vllm`) |
 | `agent.thinking_enabled` | Enable extended thinking / chain-of-thought |
 | `agent.open_web_search_enabled` | Enable web search tool |
 | `agent.courtlistener_search_enabled` | Enable CourtListener search |

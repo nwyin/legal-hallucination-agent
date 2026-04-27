@@ -5,21 +5,21 @@ from openai import OpenAI
 
 from .base_llm import ModelAPIProtocol
 
-def get_della_base_url(
+def get_vllm_base_url(
     port: Optional[int] = None,
     host: str = "localhost",
     scheme: str = "http",
     base_url: Optional[str] = None,
 ) -> str:
     """
-    Get the base URL for della-inference API (without /v1).
-    
+    Get the base URL for the vLLM API (without /v1).
+
     Args:
-        port: Port number for della-inference API (required unless base_url is set).
-        host: Hostname for della-inference API.
+        port: Port number for the vLLM API (required unless base_url is set).
+        host: Hostname for the vLLM API.
         scheme: URL scheme (http or https).
         base_url: Full base URL override (e.g., "http://compute001:8001").
-    
+
     Returns:
         Base URL string (e.g., "http://localhost:8001")
     """
@@ -29,13 +29,13 @@ def get_della_base_url(
     if port is None:
         raise ValueError(
             "Port must be specified explicitly when base_url is not set. "
-            "Set DellaInferenceModel(port=..., host=...) or DellaInferenceModel(base_url=...)."
+            "Set VLLMModel(port=..., host=...) or VLLMModel(base_url=...)."
         )
-    
+
     return f"{scheme}://{host}:{port}"
 
 
-def get_della_client(
+def get_vllm_client(
     port: Optional[int] = None,
     host: str = "localhost",
     scheme: str = "http",
@@ -43,19 +43,19 @@ def get_della_client(
     timeout: float = 60.0,
 ):
     """
-    Initialize OpenAI client for della-inference API.
-    
+    Initialize OpenAI client for the vLLM API.
+
     Args:
-        port: Port number for della-inference API (required unless base_url is set).
-        host: Hostname for della-inference API.
+        port: Port number for the vLLM API (required unless base_url is set).
+        host: Hostname for the vLLM API.
         scheme: URL scheme (http or https).
         base_url: Full base URL override (e.g., "http://compute001:8001").
         timeout: Timeout in seconds for API requests (default: 60.0)
-    
+
     Returns:
-        OpenAI client configured for della-inference
+        OpenAI client configured for vLLM
     """
-    resolved_base_url = get_della_base_url(
+    resolved_base_url = get_vllm_base_url(
         port=port,
         host=host,
         scheme=scheme,
@@ -63,35 +63,35 @@ def get_della_client(
     )
     return OpenAI(
         base_url=f"{resolved_base_url}/v1",
-        api_key="token-abc123",  # della-inference uses any token
+        api_key="token-abc123",  # vLLM accepts any token
         timeout=timeout,
         max_retries=3  # SDK handles retries with exponential backoff
     )
 
-DellaChatPrompt = list[dict[str, str]]
-DellaBasePrompt = Union[str, list[str]]
+VLLMChatPrompt = list[dict[str, str]]
+VLLMBasePrompt = Union[str, list[str]]
 
 @attrs.define
-class DellaInferenceModel(ModelAPIProtocol):
-    """Model API for della-inference served models."""
-    
+class VLLMModel(ModelAPIProtocol):
+    """Model API for vLLM-served models."""
+
     port: Optional[int] = None  # Port number (required, must be set explicitly)
     host: str = "localhost"
     scheme: str = "http"
     base_url: Optional[str] = None
     timeout: Optional[float] = None  # Timeout in seconds for API requests
-    
+
     def _make_api_call(self, prompt, model_id, num_candidates, **params):
         raise NotImplementedError
-    
+
     def __call__(self, model_ids, prompt, num_candidates, max_attempts=3, **kwargs):
-        # Della uses OpenAI SDK which handles retries automatically
+        # vLLM uses OpenAI SDK which handles retries automatically
         return self._make_api_call(prompt, model_ids, num_candidates, **kwargs)
 
-class DellaInferenceChatModel(DellaInferenceModel):
-    """Chat model interface for della-inference."""
-    
-    def _truncate_messages(self, messages: DellaChatPrompt, max_chars: int = 48000) -> DellaChatPrompt:
+class VLLMChatModel(VLLMModel):
+    """Chat model interface for vLLM."""
+
+    def _truncate_messages(self, messages: VLLMChatPrompt, max_chars: int = 48000) -> VLLMChatPrompt:
         """
         Truncate chat messages to avoid exceeding the model context window.
 
@@ -115,7 +115,7 @@ class DellaInferenceChatModel(DellaInferenceModel):
             if budget <= 0:
                 return first
 
-            kept: DellaChatPrompt = []
+            kept: VLLMChatPrompt = []
             running = 0
             for m in reversed(rest):
                 content = str(m.get("content", ""))
@@ -133,7 +133,7 @@ class DellaInferenceChatModel(DellaInferenceModel):
             return first + kept
         except Exception:
             return messages
-    
+
     def _make_api_call(self, prompt, model_id, num_candidates, **params):
         client_kwargs = {
             "port": self.port,
@@ -143,7 +143,7 @@ class DellaInferenceChatModel(DellaInferenceModel):
         }
         if self.timeout is not None:
             client_kwargs["timeout"] = self.timeout
-        client = get_della_client(**client_kwargs)
+        client = get_vllm_client(**client_kwargs)
 
         # Ensure num_candidates/n parameter is set
         if num_candidates > 1:
@@ -168,7 +168,7 @@ class DellaInferenceChatModel(DellaInferenceModel):
                 if attempt < 3 and "input_tokens" in str(e) and "context length" in str(e):
                     continue
                 raise
-        
+
         # Handle multiple candidates if requested
         if num_candidates > 1:
             return [choice.message.content for choice in api_response.choices]
@@ -176,9 +176,9 @@ class DellaInferenceChatModel(DellaInferenceModel):
             return api_response.choices[0].message.content
 
 
-class DellaInferenceEmbeddingModel(DellaInferenceModel):
+class VLLMEmbeddingModel(VLLMModel):
     """Embeddings via /v1/embeddings on pooling-runner servers."""
-    
+
     def _make_api_call(self, inputs, model_id, num_candidates, **params):
         client_kwargs = {
             "port": self.port,
@@ -188,87 +188,84 @@ class DellaInferenceEmbeddingModel(DellaInferenceModel):
         }
         if self.timeout is not None:
             client_kwargs["timeout"] = self.timeout
-        client = get_della_client(**client_kwargs)
-        
+        client = get_vllm_client(**client_kwargs)
+
         resp = client.embeddings.create(
             model=model_id,
             input=inputs,
             **params,
         )
-        
+
         # Return list of embedding vectors
         return [d.embedding for d in resp.data]
 
 
-class DellaInferencePoolingClient(DellaInferenceModel):
+class VLLMPoolingClient(VLLMModel):
     """Low-level client for vLLM /pooling (token_embed, token_classify, etc.)."""
-    
+
     def _make_api_call(self, prompt, model_id, num_candidates, **params):
-        base_url = get_della_base_url(
+        base_url = get_vllm_base_url(
             port=self.port,
             host=self.host,
             scheme=self.scheme,
             base_url=self.base_url,
         )
         api_url = f"{base_url}/pooling"
-        
+
         payload = {"model": model_id, **prompt, **params}
-        
+
         resp = requests.post(api_url, json=payload, timeout=60)
         resp.raise_for_status()
-        
+
         return resp.json()
 
 
-class DellaInferenceClassifyModel(DellaInferenceModel):
+class VLLMClassifyModel(VLLMModel):
     """Sequence classification via vLLM /classify."""
-    
+
     def _make_api_call(self, inputs, model_id, num_candidates, **params):
-        base_url = get_della_base_url(
+        base_url = get_vllm_base_url(
             port=self.port,
             host=self.host,
             scheme=self.scheme,
             base_url=self.base_url,
         )
         api_url = f"{base_url}/classify"
-        
+
         payload = {
             "model": model_id,
             "input": inputs,  # string or list[str]
             **params,
         }
-        
+
         resp = requests.post(api_url, json=payload, timeout=60)
         resp.raise_for_status()
-        
+
         return resp.json()
 
 
-class DellaInferenceScoreModel(DellaInferenceModel):
+class VLLMScoreModel(VLLMModel):
     """Pairwise scoring via vLLM /score."""
-    
+
     def _make_api_call(self, pairs, model_id, num_candidates, **params):
-        base_url = get_della_base_url(
+        base_url = get_vllm_base_url(
             port=self.port,
             host=self.host,
             scheme=self.scheme,
             base_url=self.base_url,
         )
         api_url = f"{base_url}/score"
-        
+
         # pairs: list[tuple[str, str]]
         inputs = [{"text_1": t1, "text_2": t2} for (t1, t2) in pairs]
-        
+
         payload = {
             "model": model_id,
             "input": inputs,
             **params,
         }
-        
+
         resp = requests.post(api_url, json=payload, timeout=60)
         resp.raise_for_status()
-        
+
         return resp.json()
-
-
-
