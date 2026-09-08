@@ -1,0 +1,25 @@
+{
+  "episode_id": "synthetic_smoke",
+  "task_name": "legal_hallucination_checker",
+  "agent_type": "BOEDCitationTrackerAgent",
+  "environment_info": {},
+  "start_time": "2026-09-08T13:12:16.044421",
+  "method": "boed_citation_tracker",
+  "model_id": "moonshotai/kimi-k2.5",
+  "end_time": "2026-09-08T13:12:26.996411",
+  "total_steps": 0,
+  "total_reward": 0.0,
+  "final_outcome": null,
+  "step_metrics": [],
+  "task_performance_summary": {
+    "error": "No predictions recorded"
+  },
+  "list_hallucinations": [
+    "Imaginary Plaintiff v. Fictional Defendant, 999999 U.S. 999999 (2099)"
+  ],
+  "predicted_hallucinations": [
+    "Imaginary Plaintiff v. Fictional Defendant, 999999 U.S. 999999 (2099)",
+    "all contracts must be written on the moon"
+  ],
+  "final_response_raw": "[\"Imaginary Plaintiff v. Fictional Defendant, 999999 U.S. 999999 (2099)\", \"all contracts must be written on the moon\"]"
+}

@@ -1,0 +1,25 @@
+[
+  {
+    "max_steps": 0,
+    "calls": 1,
+    "actions": [],
+    "prediction": [
+      "Imaginary Plaintiff v. Fictional Defendant, 999999 U.S. 999999 (2099)",
+      "all contracts must be written on the moon"
+    ],
+    "f1": 0.6666666666666666
+  },
+  {
+    "max_steps": 3,
+    "calls": 5,
+    "actions": [
+      "EDIT_SCRATCHPAD",
+      "THINK",
+      "PROVIDE_FINAL_RESPONSE"
+    ],
+    "prediction": [
+      "Imaginary Plaintiff v. Fictional Defendant, 999999 U.S. 999999 (2099)"
+    ],
+    "f1": 1.0
+  }
+]

@@ -1,0 +1,25 @@
+{
+  "total_steps": 0,
+  "terminated": false,
+  "truncated": true,
+  "final_response": "[\"Imaginary Plaintiff v. Fictional Defendant, 999999 U.S. 999999 (2099)\", \"all contracts must be written on the moon\"]",
+  "predicted_hallucinations": [
+    "Imaginary Plaintiff v. Fictional Defendant, 999999 U.S. 999999 (2099)",
+    "all contracts must be written on the moon"
+  ],
+  "is_correct": null,
+  "accuracy": 0.6666666666666666,
+  "precision": 0.5,
+  "recall": 1.0,
+  "f1": 0.6666666666666666,
+  "true_answer": [
+    "Imaginary Plaintiff v. Fictional Defendant, 999999 U.S. 999999 (2099)"
+  ],
+  "question": "",
+  "history": [],
+  "model_used": "moonshotai/kimi-k2.5",
+  "task_beliefs": "Your task knowledge is a list of citations, quotes, and holdings from the brief, described in words. Keep a numbered or bulleted list. For each item note: (1) the citation, quote, or holding, (2) status: pending, verified as correct, or hallucinated. When you update your beliefs after an observation, never delete items—only add new items or update the status of items you just verified. Current list: None yet. Add items as you identify them from the brief and update status as you verify them.",
+  "design_beliefs": "",
+  "episode_id": "synthetic_smoke",
+  "example_id": "synthetic_smoke"
+}

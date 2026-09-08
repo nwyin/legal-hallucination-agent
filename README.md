@@ -55,7 +55,7 @@ uv run --locked python scripts/experiments/run_experiment.py --config-name=legal
 - `data.example_id=` — run a single example instead of the full dataset
 - `data.limit=` — cap the number of examples in batch mode
 - `agent.model.model_id=` / `agent.model.provider=` — change the LLM
-- `environment.max_steps=` — max actions per episode (0 = unlimited)
+- `environment.max_steps=` — max actions per episode (0 = non-agentic baseline: direct prediction without tool actions or belief updates)
 - `test_run=true` — write outputs to `test/` subfolders
 
 ## Configuration
@@ -101,7 +101,7 @@ Use any OpenRouter model ID you have access to.
 | `agent.open_web_search_enabled` | Enable web search tool |
 | `agent.courtlistener_search_enabled` | Enable CourtListener search |
 | `agent.courtlistener_opinion_access_enabled` | Enable full opinion retrieval |
-| `environment.max_steps` | Max steps per episode (0 = unlimited) |
+| `environment.max_steps` | Max actions per episode (0 = non-agentic baseline: direct prediction without tool actions or belief updates) |
 | `search.top_k` | Number of results returned per search |
 
 ## Dataset Format
