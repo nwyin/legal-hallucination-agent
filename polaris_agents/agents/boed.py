@@ -656,7 +656,7 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
                     {"role": "assistant", "content": response or ""},
                     {"role": "user", "content": reask_msg},
                 ]
-                is_local_provider = self.provider in ('local', 'vllm')
+                is_local_provider = self.provider == "local"
                 if is_local_provider:
                     logger.info("Retrying prediction with thinking disabled and re-ask message")
                     retry_kwargs = {**prediction_kwargs, 'prompt': retry_prompt, 'extra_body': {"chat_template_kwargs": {"enable_thinking": False}}}

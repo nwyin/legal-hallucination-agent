@@ -65,22 +65,18 @@ agent:
 ```
 
 ### `legal_hallucination_checker_gptoss.yaml`
-For a locally-served model via vLLM (vllm provider):
+Example config for `gpt-oss`:
 
 ```yaml
 agent:
   model:
-    provider: "vllm"
+    provider: "openai"
     model_id: "gpt-oss-120b"
-    base_url: "http://localhost:8000"
-    timeout: 600
+    temperature: 0.8
+    max_tokens: 4096
 ```
 
-The `vllm` provider connects to an OpenAI-compatible vLLM endpoint. Start one with:
-
-```bash
-bash scripts/start_vllm_gptoss.sh
-```
+You can point this config to any supported API provider in your environment.
 
 ### Key config options
 
@@ -90,7 +86,7 @@ bash scripts/start_vllm_gptoss.sh
 | `data.output_path` | Path to write output JSONL |
 | `data.id_field` | Field in JSONL used as example ID |
 | `data.skip_completed` | Skip examples already in output file |
-| `agent.model.provider` | LLM provider (`openai`, `sandbox`, `gemini`, `openrouter`, `local`, `vllm`) |
+| `agent.model.provider` | LLM provider (`openai`, `sandbox`, `gemini`, `openrouter`) |
 | `agent.thinking_enabled` | Enable extended thinking / chain-of-thought |
 | `agent.open_web_search_enabled` | Enable web search tool |
 | `agent.courtlistener_search_enabled` | Enable CourtListener search |

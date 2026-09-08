@@ -185,7 +185,6 @@ def check_required_api_key(provider: str) -> bool:
         "openai": "OPENAI_API_KEY",
         "gemini": "GEMINI_API_KEY",
         "sandbox": "AI_SANDBOX_KEY",
-        "vllm": None,
     }
     required_key = key_map.get(provider.lower()) if provider else None
     if required_key and not os.getenv(required_key):
@@ -193,59 +192,6 @@ def check_required_api_key(provider: str) -> bool:
         print(f"Please set: export {required_key}='your_key'")
         return False
     return True
-
-
-def configure_model_api(model_api: ModelAPI, model_config: Dict[str, Any], eval_model_config: Dict[str, Any]) -> None:
-    """
-    Configure provider-specific runtime settings on the shared ModelAPI instance.
-
-    Currently supports `vllm` endpoint configuration so agent LLM calls can target
-    a remote compute-node service instead of localhost.
-    """
-    providers_in_use = {
-        (model_config or {}).get("provider"),
-        (eval_model_config or {}).get("provider"),
-    }
-
-    if "vllm" not in providers_in_use:
-        return
-
-    vllm_client = model_api._providers.get("vllm")
-    if vllm_client is None:
-        raise ValueError("ModelAPI does not expose a 'vllm' provider client")
-
-    # Agent model settings are primary; evaluation model settings can fill in missing values.
-    agent_cfg = model_config or {}
-    eval_cfg = eval_model_config or {}
-
-    # `base_url` takes precedence over host/port.
-    base_url = agent_cfg.get("base_url") or eval_cfg.get("base_url")
-    host = agent_cfg.get("host") or eval_cfg.get("host")
-    scheme = agent_cfg.get("scheme") or eval_cfg.get("scheme")
-    port = agent_cfg.get("port")
-    if port is None:
-        port = eval_cfg.get("port")
-    timeout = agent_cfg.get("timeout")
-    if timeout is None:
-        timeout = eval_cfg.get("timeout")
-
-    if base_url:
-        vllm_client.base_url = str(base_url)
-    if host:
-        vllm_client.host = str(host)
-    if scheme:
-        vllm_client.scheme = str(scheme)
-    if port is not None:
-        vllm_client.port = int(port)
-    if timeout is not None:
-        vllm_client.timeout = float(timeout)
-
-    # Fail early with a clear message if no endpoint is configured.
-    if not getattr(vllm_client, "base_url", None) and getattr(vllm_client, "port", None) is None:
-        raise ValueError(
-            "Provider 'vllm' requires endpoint configuration. "
-            "Set agent.model.port (or agent.model.base_url)."
-        )
 
 
 def resolve_agent_model_config(cfg: DictConfig) -> Dict[str, Any]:
@@ -1217,7 +1163,6 @@ def main(cfg: DictConfig):
     
     # Create shared model API
     model_api = ModelAPI()
-    configure_model_api(model_api=model_api, model_config=model_config, eval_model_config=eval_model_config)
     
     # Run examples
     results = []

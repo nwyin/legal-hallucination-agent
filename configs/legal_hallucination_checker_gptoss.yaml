@@ -29,18 +29,12 @@ test_run: false
 agent:
   # Agent model: Used for agent inference (action selection, belief updates, etc.)
   model:
-    provider: ""  # Provider: openai, openrouter, gemini, sandbox, local (in-process), or vllm (OpenAI-compatible server)
+    provider: ""  # Provider: openai, openrouter, gemini, sandbox
     model_id: "gpt-oss-120b"  # Model identifier: gemini-2.5-pro, gpt-4o, gpt-oss-120b, deepseek/deepseek-r1:free
     temperature: 0.8
     max_tokens: 4096
     max_attempts: 3
     seed: null  # Set to null for randomness
-    # For provider=vllm (remote OpenAI-compatible local LLM endpoint):
-    host: "localhost"     # Compute node hostname if directly reachable
-    port: 8000            # Required unless base_url is set
-    scheme: "http"
-    base_url: "http://localhost:8000"
-    timeout: 600          # Optional request timeout seconds
   
   # Max tokens for different agent inference steps
   max_tokens:
