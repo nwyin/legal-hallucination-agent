@@ -1,14 +1,13 @@
 """
-Task performance tracking for evaluating agent prediction quality over time.
+Task performance tracking for evaluating final submitted predictions.
 
-This module provides agent-centric prediction tracking, using the agent's own model
-to get predictions and confidence scores at each step. This is separate from external 
-LLM-as-a-judge metrics - this captures what the agent thinks about the final answer.
+This module scores answers already submitted by the agent without additional model
+calls and stores prediction results for episode summaries.
 """
 
 import json
 import os
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, asdict
 from datetime import datetime
 import logging
@@ -27,11 +26,10 @@ class PredictionResult:
 
 class TaskPerformanceTracker:
     """
-    Tracks task performance over time by evaluating agent predictions using the agent's own model.
-    This captures the agent's internal predictions and confidence, not external judge assessments.
-    This runs in parallel to agent execution without interfering with it.
-    
-    Uses the environment's is_correct() method for evaluation to ensure consistency.
+    Evaluates final submitted predictions without querying the agent's model.
+
+    Uses citation precision/recall/F1 for the legal hallucination checker and the
+    environment's is_correct() method for other tasks.
     """
     
     def __init__(self):
@@ -56,86 +54,6 @@ class TaskPerformanceTracker:
         if environment:
             logger.info(f"Using environment's is_correct() method for evaluation")
     
-    def evaluate_prediction_at_step(
-        self, 
-        step: int, 
-        agent: Any,
-        context: Optional[Dict[str, Any]] = None
-    ) -> PredictionResult:
-        """
-        Get the agent's prediction and confidence using the agent's own model.
-        
-        Args:
-            step: Current step number
-            agent: The agent instance to get predictions from
-            context: Additional context about the task/environment
-            
-        Returns:
-            PredictionResult with agent's prediction, confidence, and accuracy evaluation
-        """
-        try:
-            # Get prediction directly from the agent's own model
-            if hasattr(agent, 'get_current_prediction'):
-                prediction, confidence = agent.get_current_prediction()
-            elif hasattr(agent, 'get_best_prediction'):
-                prediction, confidence = agent.get_best_prediction()
-            else:
-                logger.warning(f"Agent {type(agent).__name__} doesn't have get_current_prediction or get_best_prediction method")
-                return PredictionResult(
-                    step=step,
-                    timestamp=datetime.now().isoformat(),
-                    prediction="NO_METHOD",
-                    confidence=0.0,
-                    is_correct=None,
-                    accuracy=None
-                )
-            
-            if prediction is None or confidence is None:
-                logger.warning(f"Prediction returned None/None from agent")
-                return PredictionResult(
-                    step=step,
-                    timestamp=datetime.now().isoformat(),
-                    prediction="NO_PREDICTION",
-                    confidence=0.0,
-                    is_correct=None,
-                    accuracy=None
-                )
-            
-            # Evaluate accuracy if ground truth is available
-            is_correct = None
-            accuracy = None
-            if self.ground_truth is not None:
-                accuracy = self._evaluate_correctness(prediction, self.ground_truth)
-                is_correct = accuracy == 1.0  # Perfect score means completely correct
-            
-            result = PredictionResult(
-                step=step,
-                timestamp=datetime.now().isoformat(),
-                prediction=prediction,
-                confidence=confidence,
-                is_correct=is_correct,
-                accuracy=accuracy
-            )
-            
-            self.predictions.append(result)
-            # Log both accuracy (ratio) and is_correct (fully correct boolean)
-            accuracy_str = f"{accuracy:.3f}" if accuracy is not None else "N/A"
-            logger.info(f"Step {step}: Prediction='{prediction}', Confidence={confidence:.3f}, "
-                        f"Accuracy={accuracy_str}, FullyCorrect={is_correct}")
-            
-            return result
-            
-        except Exception as e:
-            logger.error(f"Failed to evaluate prediction at step {step}: {e}")
-            return PredictionResult(
-                step=step,
-                timestamp=datetime.now().isoformat(),
-                prediction="ERROR",
-                confidence=0.0,
-                is_correct=None,
-                accuracy=None
-            )
-
     def evaluate_final_prediction(
         self,
         agent: Any,

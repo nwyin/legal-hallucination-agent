@@ -327,42 +327,6 @@ class MetricsCollector:
         except Exception as e:
             logger.warning(f"Final prediction evaluation failed: {e}")
 
-    def evaluate_task_performance(self, agent) -> None:
-        """
-        Evaluate task performance for all steps using the provided agent.
-        
-        Args:
-            agent: The agent instance to evaluate predictions for
-        """
-        if not self.task_performance_tracker or not self.current_episode:
-            return
-        
-        logger.info("Evaluating task performance for all steps...")
-        
-        for step_metric in self.current_episode.step_metrics:
-            try:
-                # Get prediction from agent
-                prediction, confidence = agent.get_current_prediction()
-                
-                # Evaluate correctness if ground truth is set
-                is_correct = None
-                
-                if self.task_performance_tracker.ground_truth is not None:
-                    is_correct = self.task_performance_tracker._evaluate_correctness(
-                        prediction, self.task_performance_tracker.ground_truth
-                    )
-                
-                # Update step metrics
-                step_metric.prediction = prediction
-                step_metric.prediction_confidence = confidence
-                step_metric.prediction_correct = is_correct
-                
-                logger.debug(f"Step {step_metric.step}: Prediction='{prediction}', "
-                           f"Confidence={confidence:.3f}, Correct={is_correct}")
-                
-            except Exception as e:
-                logger.warning(f"Task performance evaluation failed for step {step_metric.step}: {e}")
-    
     def end_episode(self, final_outcome: Optional[str] = None, extra_data: Optional[Dict[str, Any]] = None) -> str:
         """
         End the current episode and save metrics.
