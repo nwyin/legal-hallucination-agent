@@ -9,7 +9,6 @@ dependencies = [
     "certifi==2025.7.14",
     "guardrails-ai==0.6.6",
     "hydra-core==1.3.2",
-    "numpy==2.2.6",
     "omegaconf==2.3.0",
     # Guardrails 0.6.6 requires OpenAI 1.x.
     "openai==1.109.1",

@@ -15,7 +15,7 @@ from difflib import SequenceMatcher
 from typing import Dict, Any, Optional, List, Tuple
 
 from .base import Environment, Observation
-from .utils import set_random_seeds, get_timestamp
+from .utils import get_timestamp
 from ..agents.action import ActionType, Action
 from ..prompts.environments.legal_hallucination_checker import (
     get_response_requirements,

@@ -1,7 +1,6 @@
 import logging
 from typing import Any, Optional, Dict, List
 from ..agents.action import Action, ActionType
-from .utils import EM
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +79,7 @@ class Environment():
         self.terminated = False
         
     def is_correct(self):
-        return EM(self.answer, self.key)
+        raise NotImplementedError("Environments must implement task-specific scoring.")
     
     def is_terminated(self):
         return self.terminated

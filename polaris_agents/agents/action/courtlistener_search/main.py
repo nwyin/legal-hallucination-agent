@@ -106,40 +106,6 @@ def make_courtlistener_request(endpoint: str, params: Dict[str, Any]) -> Dict[st
     return response.json()
 
 
-def convert_date_filter_to_api_params(date_filter: Dict[str, Any]) -> Dict[str, str]:
-    """
-    Convert structured date_filter to CourtListener API parameters.
-    
-    Args:
-        date_filter: Dict with 'field' and 'before'/'after' keys (dates in YYYY-MM-DD format)
-        
-    Returns:
-        Dictionary with date_filed__gt and/or date_filed__lt parameters
-    """
-    if not date_filter or 'field' not in date_filter:
-        return {}
-    
-    # Only support date_filed field for now
-    if date_filter['field'] != 'date_filed':
-        return {}
-    
-    params = {}
-    
-    if 'before' in date_filter:
-        before_date = date_filter['before']
-        # Validate date format (basic check)
-        if isinstance(before_date, str) and len(before_date) == 10 and before_date.count('-') == 2:
-            params['date_filed__lt'] = before_date
-    
-    if 'after' in date_filter:
-        after_date = date_filter['after']
-        # Validate date format (basic check)
-        if isinstance(after_date, str) and len(after_date) == 10 and after_date.count('-') == 2:
-            params['date_filed__gt'] = after_date
-    
-    return params
-
-
 def fetch_opinion(opinion_id: str) -> Dict[str, Any]:
     """
     Fetch a single opinion from CourtListener by ID.
