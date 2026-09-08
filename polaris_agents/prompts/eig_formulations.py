@@ -31,7 +31,6 @@ def get_eig_objective_text(formulation: EIGFormulation) -> str:
 
 
 def _get_joint_formulation_text() -> str:
-    """JOINT formulation: Maximize EIG(θ,D | action)"""
     return """Choose the action that maximizes Expected Information Gain (EIG) about D and θ.
 
 **Expected Information Gain (EIG)** measures how much the observation from taking an action is expected to reduce uncertainty about D and θ:
@@ -55,7 +54,6 @@ Consider plausible candidate actions, estimate their joint EIG, and select the a
 
 
 def _get_additive_formulation_text() -> str:
-    """ADDITIVE formulation: Chain-rule decomposition of joint EIG"""
     return """Choose the action that maximizes Expected Information Gain (EIG) about D and θ.
 
 **EIG can be decomposed using the chain rule:**

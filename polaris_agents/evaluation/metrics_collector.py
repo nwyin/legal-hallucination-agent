@@ -459,7 +459,6 @@ class MetricsCollector:
             return obj
     
     def _extract_action_content(self, action) -> str:
-        """Extract relevant content from action."""
         content_parts = []
         
         # For CLOSED_SEARCH actions, show Search Type first, then Query

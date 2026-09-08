@@ -220,7 +220,6 @@ class TaskPerformanceTracker:
     
     
     def get_performance_summary(self) -> Dict[str, Any]:
-        """Get summary of task performance over time."""
         if not self.predictions:
             return {"error": "No predictions recorded"}
         
@@ -252,7 +251,6 @@ class TaskPerformanceTracker:
         }
     
     def save_predictions(self, filepath: str) -> None:
-        """Save predictions to a JSON file."""
         data = {
             "task_type": self.task_type,
             "ground_truth": self.ground_truth,
@@ -268,7 +266,6 @@ class TaskPerformanceTracker:
     
     @classmethod
     def load_predictions(cls, filepath: str) -> 'TaskPerformanceTracker':
-        """Load predictions from a JSON file."""
         with open(filepath, 'r') as f:
             data = json.load(f)
         

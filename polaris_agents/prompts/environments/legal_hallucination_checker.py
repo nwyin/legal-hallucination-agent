@@ -28,7 +28,6 @@ class LegalHallucinationCheckerDomainKnowledge(DomainKnowledgeProvider):
     """
     
     def get_theta_description(self) -> str:
-        """Get description of θ and citation domain knowledge. Shown in both belief-update and action-selection prompts."""
         return """### Task Parameters (θ)
 Task instance-specific information needed to identify hallucinated citations in the brief.
 
@@ -54,7 +53,6 @@ If the case does not exist or the name does not match, the entire citation is ha
     In this case, ONLY return the citations that are hallucinated, no need to return the quotes and holdings."""
 
     def get_domain_knowledge_description(self) -> str:
-        """Get only the citation domain knowledge section (no task parameters intro). Used for max_steps=0 prompts."""
         return """### Domain knowledge: legal case citations
 - **Citation format**:
     Typical format is Case Name, Volume Reporter Page (e.g., 557 F.2d 170). The part after the comma is the reporter citation; "at" introduces a pincite (specific page).
@@ -72,21 +70,17 @@ If the case does not exist or the name does not match, the entire citation is ha
     In this case, ONLY return the citations that are hallucinated, no need to return the quotes and holdings."""
 
     def get_design_description(self) -> str:
-        """Get description of D for legal hallucination checker (used only for EIG estimation if enabled)."""
         return """### Design / domain knowledge
 How to verify legal citations and detect hallucinations: 
 - BlueBook citation format, CourtListener search and opinion fetch, common hallucination types (non-existent cases, misquoted language, wrong pincites)."""
 
     def get_classification_guidance(self) -> str:
-        """Guidance for action classification (used only when evaluation.enable_action_classification is true)."""
         return """Score each action 0.0–1.0 by how directly it gathers evidence for identifying hallucinated citations. Search and opinion actions: 0.7–0.95. THINK: 0.2–0.5."""
 
     def get_action_selection_task_section(self) -> Optional[str]:
-        """Short task section for BOED action selection (replaces long θ + domain block)."""
         return """You are verifying citations in a legal brief for hallucinations. Your uncertainty (θ) is: which citations are hallucinated (non-existent, misquoted, or wrong pincite). You reduce that uncertainty by using search and opinion actions to gather evidence; then you submit your final list of hallucinated citations."""
 
     def get_action_selection_guidance(self) -> Optional[str]:
-        """Task-specific guidance for BOED action selection (citation verification)."""
         return """For this task you must **verify citations** by gathering evidence from external sources. Apply the following when choosing actions:
 
 - **THINK has zero information gain**: The observation from THINK only echoes your thought

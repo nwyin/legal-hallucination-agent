@@ -11,7 +11,6 @@ from typing import Dict, List, Tuple, Any, Optional
 
 
 def _extract_list_from_string(s: str) -> List[str]:
-    """Extract JSON list from string (handles trailing text after ']')."""
     s = s.strip()
     start = s.find("[")
     if start == -1:
@@ -86,14 +85,12 @@ def parse_predictions(raw: Any) -> List[str]:
 
 
 def _normalize(s: str) -> str:
-    """Normalize string for comparison (strip, lowercase)."""
     if s is None:
         return ""
     return str(s).strip().lower()
 
 
 def _fragments_in_order(fragments: List[str], text: str) -> bool:
-    """Return True if all non-empty fragments appear in text in order."""
     pos = 0
     for frag in fragments:
         if not frag:
@@ -150,7 +147,6 @@ def _normalize_ground_truth(list_hallucinations: Any) -> List[Tuple[str, Optiona
 
 
 def extract_ground_truth(entry: Dict[str, Any]) -> Any:
-    """Resolve ground-truth hallucination field from known aliases in an entry dict."""
     if not entry:
         return []
     for key in ("list_hallucinations", "listed_hallucinations", "list_hallucinationss"):

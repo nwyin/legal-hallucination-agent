@@ -139,7 +139,6 @@ class Action:
 
 
     def get_input_parameters(self) -> Dict[str, Any]:
-        """Get all action input parameters that were set on this Action instance."""
         parameters = {}
         for input_name in self.inputs.keys():
             value = getattr(self, input_name)
@@ -148,7 +147,6 @@ class Action:
 
 
     def print_input_parameters(self):
-        """Print all action input parameters that were set on this Action instance."""
         print(f"\n=== {self.__class__.__name__} Attributes ===")
         
         # Get all action input parameters
@@ -204,5 +202,4 @@ def get_action_class(action_type: ActionType) -> type[Action]:
 
 
 def get_all_action_classes() -> List[Type[Action]]:
-    """Get all registered Action classes."""
     return list(_action_registry.values())

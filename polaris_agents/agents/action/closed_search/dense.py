@@ -55,7 +55,6 @@ from .metadata_filters import (
 # =============================================================================
 
 def is_directory_empty(directory_path):
-    """Check if a directory is empty or doesn't exist."""
     try:
         return len(os.listdir(directory_path)) == 0
     except OSError:
@@ -64,7 +63,6 @@ def is_directory_empty(directory_path):
 
 
 def check_internet_connection():
-    """Check if internet connection is available."""
     try:
         # Try to connect to a reliable host
         socket.create_connection(("8.8.8.8", 53), timeout=3)
@@ -74,7 +72,6 @@ def check_internet_connection():
 
 
 def is_model_cached(model_name):
-    """Check if a SentenceTransformer model is cached locally."""
     try:
         # Check both custom cache folder and default cache folder
         cache_folders = []
@@ -220,7 +217,6 @@ def _call_with_optional_kwargs(fn, texts, **kwargs):
 
 
 def _average_pool(last_hidden_states: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
-    """Average pooling with attention mask and L2 normalization."""
     attention_mask = attention_mask.unsqueeze(-1).type_as(last_hidden_states)
     last_hidden_states = last_hidden_states.to(torch.float32)
     masked_hidden = last_hidden_states * attention_mask
@@ -309,7 +305,6 @@ class NemotronEmbeddingModel:
 
 
 def _last_token_pool(last_hidden_states: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
-    """Pool embeddings by taking the last token (Qwen3-Embedding method)."""
     left_padding = (attention_mask[:, -1].sum() == attention_mask.shape[0])
     if left_padding:
         return last_hidden_states[:, -1]
@@ -386,22 +381,18 @@ class QwenEmbeddingModel:
         self.embedding_dim = getattr(self.model.config, "hidden_size", None) or getattr(self.model.config, "dim", 2048)
 
     def set_query_instruction(self, instruction: str):
-        """Update the query instruction (useful for testing different instructions)."""
         self.query_instruction = instruction
 
     def _get_detailed_instruct(self, query: str) -> str:
-        """Format query with instruction (Qwen3-Embedding format)."""
         return f'Instruct: {self.query_instruction}\nQuery:{query}'
 
     def encode_documents(self, documents: List[str], batch_size: int = 8) -> np.ndarray:
-        """Encode documents (no instruction needed for documents)."""
         if not documents:
             return np.zeros((0, self.embedding_dim), dtype=np.float32)
         texts = _pre_truncate_texts(documents, self.model_name)
         return self._encode_texts(texts, batch_size=batch_size)
 
     def encode_queries(self, queries: List[str], batch_size: int = 8) -> np.ndarray:
-        """Encode queries with instruction prefix."""
         if not queries:
             return np.zeros((0, self.embedding_dim), dtype=np.float32)
         instructed = [self._get_detailed_instruct(query) for query in queries]
@@ -409,7 +400,6 @@ class QwenEmbeddingModel:
         return self._encode_texts(texts, batch_size=batch_size)
 
     def _encode_texts(self, texts: List[str], batch_size: int = 8) -> np.ndarray:
-        """Encode texts using last token pooling (Qwen3-Embedding method)."""
         embeddings = []
         total = len(texts)
         for start in tqdm(range(0, total, batch_size), desc="Encoding", unit="batch", leave=False):
@@ -434,7 +424,6 @@ class QwenEmbeddingModel:
 
 
 def _cls_pool(outputs: torch.Tensor, attention_mask: torch.Tensor, strategy: str = 'cls') -> torch.Tensor:
-    """Pool embeddings using CLS token (first token) or mean pooling (Dewey method)."""
     if strategy == 'cls':
         return outputs[:, 0]  # Take first token (CLS token)
     elif strategy == 'mean':
@@ -496,15 +485,12 @@ class DeweyEmbeddingModel:
         self.embedding_dim = 2048
 
     def _transform_query(self, query: str) -> str:
-        """Transform query with retrieval prompt (Dewey format from README)."""
         return f"{self.RETRIEVE_Q_PROMPT}{query}"
 
     def _transform_document(self, document: str) -> str:
-        """Transform document with retrieval prompt (Dewey format from README)."""
         return f"{self.RETRIEVE_P_PROMPT}{document}"
 
     def encode_documents(self, documents: List[str], batch_size: int = 8) -> np.ndarray:
-        """Encode documents using Dewey's custom encode method."""
         if not documents:
             return np.zeros((0, self.embedding_dim), dtype=np.float32)
         
@@ -550,7 +536,6 @@ class DeweyEmbeddingModel:
         return embeddings.astype(np.float32)
 
     def encode_queries(self, queries: List[str], batch_size: int = 8) -> np.ndarray:
-        """Encode queries using Dewey's custom encode method."""
         if not queries:
             return np.zeros((0, self.embedding_dim), dtype=np.float32)
         
@@ -632,18 +617,15 @@ class E5MistralEmbeddingModel:
         self.embedding_dim = getattr(self.model.config, "hidden_size", None) or getattr(self.model.config, "dim", 4096)
 
     def _get_detailed_instruct(self, query: str) -> str:
-        """Format query with instruction (e5-mistral format)."""
         return f'Instruct: {self.task_description}\nQuery: {query}'
 
     def encode_documents(self, documents: List[str], batch_size: int = 8) -> np.ndarray:
-        """Encode documents (no instruction needed for documents)."""
         if not documents:
             return np.zeros((0, self.embedding_dim), dtype=np.float32)
         texts = _pre_truncate_texts(documents, self.model_name)
         return self._encode_texts(texts, batch_size=batch_size)
 
     def encode_queries(self, queries: List[str], batch_size: int = 8) -> np.ndarray:
-        """Encode queries with instruction prefix."""
         if not queries:
             return np.zeros((0, self.embedding_dim), dtype=np.float32)
         instructed = [self._get_detailed_instruct(query) for query in queries]
@@ -651,7 +633,6 @@ class E5MistralEmbeddingModel:
         return self._encode_texts(texts, batch_size=batch_size)
 
     def _encode_texts(self, texts: List[str], batch_size: int = 8) -> np.ndarray:
-        """Encode texts using last token pooling (e5-mistral method)."""
         embeddings = []
         total = len(texts)
         for start in range(0, total, batch_size):
@@ -707,18 +688,15 @@ class MixedbreadEmbeddingModel:
         self.embedding_dim = getattr(self.model.config, "hidden_size", None) or getattr(self.model.config, "dim", 1024)
 
     def _transform_query(self, query: str) -> str:
-        """Transform query with retrieval prompt (mixedbread format)."""
         return f'Represent this sentence for searching relevant passages: {query}'
 
     def encode_documents(self, documents: List[str], batch_size: int = 8) -> np.ndarray:
-        """Encode documents (no transformation needed for documents)."""
         if not documents:
             return np.zeros((0, self.embedding_dim), dtype=np.float32)
         texts = _pre_truncate_texts(documents, self.model_name)
         return self._encode_texts(texts, batch_size=batch_size)
 
     def encode_queries(self, queries: List[str], batch_size: int = 8) -> np.ndarray:
-        """Encode queries with retrieval prompt prefix."""
         if not queries:
             return np.zeros((0, self.embedding_dim), dtype=np.float32)
         transformed = [self._transform_query(query) for query in queries]
@@ -726,7 +704,6 @@ class MixedbreadEmbeddingModel:
         return self._encode_texts(texts, batch_size=batch_size)
 
     def _encode_texts(self, texts: List[str], batch_size: int = 8) -> np.ndarray:
-        """Encode texts using CLS or mean pooling (mixedbread method)."""
         embeddings = []
         total = len(texts)
         for start in range(0, total, batch_size):
@@ -805,7 +782,6 @@ def _encode_queries_for_model(model, model_name, queries, batch_size=32):
 # =============================================================================
 
 def load_documents(collection_path):
-    """Load documents from individual JSON files in a directory or JSONL file."""
     documents = []
     
     if os.path.isfile(collection_path):

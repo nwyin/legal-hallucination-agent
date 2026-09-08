@@ -91,7 +91,6 @@ def extract_hallucination_ground_truth(data: Dict[str, Any]) -> Any:
 
 
 def _load_task_config(task: str) -> Dict[str, Any]:
-    """Load config for a single task (lazy import to avoid Java/pyserini for tasks that don't need it)."""
     if task == "legal_hallucination_checker":
         from polaris_agents.environments.legal_hallucination_checker import HallucinationCheckerEnvironment
         from polaris_agents.prompts.environments.legal_hallucination_checker import LegalHallucinationCheckerDomainKnowledge
@@ -110,7 +109,6 @@ def _load_task_config(task: str) -> Dict[str, Any]:
 
 
 def get_task_registry(task: str) -> Dict[str, Dict[str, Any]]:
-    """Returns task config for the given task. Loads only that task to avoid heavy deps (e.g. pyserini/Java for scotus)."""
     if task not in TASK_NAMES:
         raise ValueError(f"Unknown task: {task}. Available: {TASK_NAMES}")
     return {task: _load_task_config(task)}
@@ -120,7 +118,6 @@ def get_task_registry(task: str) -> Dict[str, Dict[str, Any]]:
 # =============================================================================
 
 def get_agent_registry() -> Dict[str, Type[Agent]]:
-    """Returns the agent registry mapping method names to agent classes."""
     from polaris_agents.agents.boed import BayesianOptimalExperimentalDesignAgent
     from polaris_agents.agents.boed_citation_tracker import BOEDCitationTrackerAgent
 
@@ -134,7 +131,6 @@ def get_agent_registry() -> Dict[str, Type[Agent]]:
 # =============================================================================
 
 def setup_logging(log_config: Dict[str, Any]):
-    """Setup logging configuration."""
     logging.basicConfig(
         level=getattr(logging, log_config.get('level', 'INFO')),
         format=log_config.get('format', '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -164,7 +160,6 @@ def setup_experiment_logging(dataset: str, method: str, model_id: str, example_i
     return log_filepath
 
 def setup_api_keys():
-    """Check and log available API keys."""
     keys = {
         "OPENROUTER_API_KEY": "OpenRouter",
         "COURTLISTENER_API_KEY": "CourtListener",
@@ -176,7 +171,6 @@ def setup_api_keys():
             print(f"⚠ {env_var} not found")
 
 def check_required_api_key(provider: str) -> bool:
-    """Check if required API key is available for the provider."""
     key_map = {
         "openrouter": "OPENROUTER_API_KEY",
     }
@@ -193,7 +187,6 @@ def check_required_api_key(provider: str) -> bool:
 
 
 def _enforce_openrouter_provider(cfg: Dict[str, Any], cfg_name: str) -> Dict[str, Any]:
-    """Normalize provider configuration to OpenRouter-only."""
     provider = (cfg.get("provider") or "openrouter").lower().strip()
     if provider and provider != "openrouter":
         logger.warning(
@@ -228,7 +221,6 @@ def resolve_agent_model_config(cfg: DictConfig) -> Dict[str, Any]:
 # =============================================================================
 
 def load_examples(dataset_path: str) -> List[Dict[str, Any]]:
-    """Load examples from a JSONL dataset file."""
     examples = []
     with open(dataset_path, 'r') as f:
         for line in f:
@@ -237,14 +229,12 @@ def load_examples(dataset_path: str) -> List[Dict[str, Any]]:
     return examples
 
 def get_example_by_id(examples: List[Dict[str, Any]], example_id: str, id_field: str) -> Optional[Dict[str, Any]]:
-    """Find an example by its ID field."""
     for example in examples:
         if str(example.get(id_field)) == str(example_id):
             return example
     return None
 
 def _serialize_action_history(history: list) -> list:
-    """Convert action history to JSON-serializable list."""
     if not history:
         return []
     result = []
@@ -275,7 +265,6 @@ def get_completed_examples(metrics_dir: str, dataset: str, model_id: str, method
 
 
 def clear_opinion_cache(opinion_cache_dir: str) -> None:
-    """Clear the opinion cache directory (remove cached opinion JSON files) so the next example doesn't reuse them."""
     if not opinion_cache_dir or not os.path.isdir(opinion_cache_dir):
         return
     try:
@@ -368,7 +357,6 @@ def build_environment_config(
 # =============================================================================
 
 def create_environment(task: str, env_config: Dict[str, Any]) -> Environment:
-    """Create an environment based on task name and config."""
     task_registry = get_task_registry(task)
     task_info = task_registry[task]
     env_class = task_info["environment_class"]
@@ -508,7 +496,6 @@ def run_episode(
 ) -> Dict[str, Any]:
     """Run a complete episode and collect metrics."""
     def _prediction_to_list(prediction: Any) -> Optional[List[str]]:
-        """Best-effort conversion of model prediction into a list of hallucinations."""
         if prediction is None:
             return None
         if isinstance(prediction, list):
@@ -719,7 +706,6 @@ def run_episode(
 # =============================================================================
 
 def log_results(summary: Dict[str, Any], task: str, method: str, example_id: str = None):
-    """Log execution results."""
     header = f"{task.upper()} - {method.upper()}"
     if example_id:
         header += f" - {example_id}"

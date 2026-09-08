@@ -143,7 +143,6 @@ class EIGEstimator:
             )
     
     def _extract_action_content(self, action) -> str:
-        """Extract relevant content from action."""
         content_parts = []
         
         if hasattr(action, 'query') and action.query:
@@ -393,7 +392,6 @@ RESPONSE FORMAT (JSON only)
                 )
     
     def get_eig_summary(self) -> Dict[str, Any]:
-        """Get summary statistics of EIG estimations."""
         if not self.estimations:
             return {"total_estimations": 0}
         

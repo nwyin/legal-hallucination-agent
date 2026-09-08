@@ -158,7 +158,6 @@ class ActionClassifier:
             )
     
     def _extract_action_content(self, action) -> str:
-        """Extract relevant content from action for classification."""
         content_parts = []
         
         # Extract action type
@@ -357,7 +356,6 @@ RESPONSE FORMAT (JSON only)
                 )
     
     def get_classification_summary(self) -> Dict[str, Any]:
-        """Get a summary of all classifications made."""
         if not self.classification_history:
             return {"total_classifications": 0}
         
@@ -383,14 +381,12 @@ RESPONSE FORMAT (JSON only)
         }
     
     def save_classifications(self, filepath: str) -> None:
-        """Save classification history to a JSON file."""
         summary = self.get_classification_summary()
         with open(filepath, 'w') as f:
             json.dump(summary, f, indent=2)
         logger.info(f"Action classifications saved to {filepath}")
     
     def load_classifications(self, filepath: str) -> None:
-        """Load classification history from a JSON file."""
         try:
             with open(filepath, 'r') as f:
                 data = json.load(f)

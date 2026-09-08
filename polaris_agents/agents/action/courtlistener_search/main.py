@@ -37,7 +37,6 @@ COURTLISTENER_BASE_URL = "https://www.courtlistener.com/api/rest/v4"
 
 # API key/token should be set as environment variable (support both names)
 def _get_courtlistener_api_key() -> Optional[str]:
-    """Fetch the CourtListener API key from environment variables."""
     return os.getenv("COURTLISTENER_API_KEY") or os.getenv("COURTLISTENER_API_TOKEN")
 
 # Rate limiting - CourtListener V4 API allows more requests
@@ -456,7 +455,6 @@ CITATION_LOOKUP_URL = f"{COURTLISTENER_BASE_URL}/citation-lookup/"
 
 
 def _sleep_until_iso(iso_timestamp: str) -> None:
-    """Sleep until the given ISO timestamp (e.g. from CourtListener rate limit wait_until)."""
     try:
         from dateutil import parser as date_parser
         until = date_parser.isoparse(iso_timestamp)

@@ -12,7 +12,6 @@ class Observation:
         self.metadata = metadata or {}
 
     def __str__(self):
-        """String representation for prompts - formats result nicely for LLM consumption."""
         if isinstance(self.result, dict):
             # Format structured results (like search results) in a readable way
             if 'action_type' in self.result and 'search_results' in self.result:
@@ -61,7 +60,6 @@ class Observation:
             return str(self.result)
     
     def __repr__(self):
-        """Full representation for debugging - includes metadata."""
         return f"Observation(result={self.result}, metadata={self.metadata})"
 
 
@@ -91,7 +89,6 @@ class Environment():
         return self.current_step >= self.max_steps
     
     def step(self, action: Action) -> Observation:
-        """Execute an action and return the resulting observation."""
         # Handle parsing failures by skipping the round
         if action is None:
             logger.warning("Agent returned None (parsing failed), skipping this round")

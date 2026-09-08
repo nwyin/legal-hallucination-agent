@@ -282,7 +282,6 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
         return f"Task Beliefs: {self.task_beliefs}"
     
     def _parse_belief_update(self, text: str) -> None:
-        """Parse belief update response into task beliefs."""
         task_section = None
         
         # Try markdown headings format: ### Task Beliefs ...
@@ -543,11 +542,9 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
                 return None
     
     def _get_available_action_types(self) -> List[ActionType]:
-        """Get list of available action types."""
         return self.action_space.copy()
     
     def _store_final_response_list_if_applicable(self, action_type: str, parameters: Dict[str, Any]) -> None:
-        """Store raw response list for PROVIDE_FINAL_RESPONSE (e.g. for hallucination checker evaluation)."""
         self.last_final_response_list = None
         if action_type != ActionType.PROVIDE_FINAL_RESPONSE.value:
             return
@@ -589,7 +586,6 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
         logger.info(f"Updated state - Step {self.current_step}: {action.action_type.value}")
     
     def get_current_beliefs(self) -> Dict[str, str]:
-        """Get current task beliefs (returns empty design_beliefs for compatibility)."""
         return {
             'task_beliefs': self.task_beliefs,
             'design_beliefs': ''  # Empty for BOED - only has task beliefs
@@ -762,7 +758,6 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             return 0.0, 0.0, 0.0, 0.0, f"Error: {str(e)}"
     
     def reset(self):
-        """Reset the agent to initial state."""
         super().reset() if hasattr(super(), 'reset') else None
         self.task_beliefs = self.task_belief_prior
         self.last_action = None

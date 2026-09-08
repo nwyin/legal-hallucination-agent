@@ -71,11 +71,9 @@ class SearchResult:
         self.result_id = result_id or self._generate_result_id()
     
     def _generate_result_id(self) -> str:
-        """Generate a 5-character random string for result ID."""
         return ''.join(random.choices(string.ascii_letters + string.digits, k=5))
     
     def __repr__(self) -> str:
-        """Return a formatted string representation of the search result."""
         if self.published_date:
             # Format as readable date
             date_str = f" ({format_parsed_date(self.published_date, 'readable')})"
@@ -84,7 +82,6 @@ class SearchResult:
         return f"{self.title}{date_str}\n{self.snippet}\n{self.url}"
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary format."""
         return {
             "result_id": self.result_id,
             "title": self.title,
@@ -137,7 +134,6 @@ def search_results_xml(results: List[SearchResult]) -> str:
 
 
 def _escape_xml(text: str) -> str:
-    """Escape XML special characters in text content."""
     if not text:
         return ""
     

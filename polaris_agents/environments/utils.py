@@ -51,7 +51,6 @@ def EM(answer: str, key: str):
 
 
 def get_timestamp() -> str:
-    """Get current timestamp as ISO format string."""
     return datetime.datetime.now().isoformat()
 
 

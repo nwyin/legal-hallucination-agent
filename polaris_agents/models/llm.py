@@ -6,7 +6,6 @@ logger = logging.getLogger(__name__)
 
 
 def _format_llm_exception(exc: Exception) -> str:
-    """Best-effort formatting for provider exceptions (status, body, args)."""
     parts = [f"{type(exc).__name__}: {exc!s}"]
 
     # Common HTTP-ish attributes across SDKs

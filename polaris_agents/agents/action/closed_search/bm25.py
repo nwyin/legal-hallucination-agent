@@ -43,7 +43,6 @@ TOTAL_CPUS = min(SLURM_CPUS_ON_NODE, SLURM_CPUS_PER_TASK) if SLURM_CPUS_PER_TASK
 
 
 def is_directory_empty(directory_path):
-    """Check if a directory is empty or doesn't exist."""
     try:
         return len(os.listdir(directory_path)) == 0
     except OSError:

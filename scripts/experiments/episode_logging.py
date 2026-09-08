@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 def log_section(title: str, char: str = "="):
-    """Log a section header."""
     logger.info("\n" + char * 80)
     logger.info(title)
     logger.info(char * 80)
@@ -34,7 +33,6 @@ def log_section(title: str, char: str = "="):
 # =============================================================================
 
 def log_initial_state(agent: "Agent", environment: "Environment", observation, task_name: str):
-    """Log initial episode state and agent configuration."""
     log_section(f"STARTING {task_name.upper()} EPISODE")
     
     log_section("INITIAL STATE")
@@ -59,7 +57,6 @@ def log_initial_state(agent: "Agent", environment: "Environment", observation, t
 
 
 def log_first_step_prompts(agent: "Agent", environment: "Environment", observation):
-    """Log the prompts used on the first step."""
     if environment.max_steps == 0:
         return
 
@@ -106,7 +103,6 @@ def log_first_step_prompts(agent: "Agent", environment: "Environment", observati
 # =============================================================================
 
 def log_step_header(step_num: int, observation):
-    """Log the header for a step."""
     log_section(f"STEP {step_num}")
     result = observation.result
     if isinstance(result, str):
@@ -120,7 +116,6 @@ def log_step_header(step_num: int, observation):
 
 
 def log_action_basic(action) -> str:
-    """Log basic action information. Returns action_type."""
     action_type = action.action_type.value
     logger.info(f"\nAction Selected: {action_type}")
     logger.info(f"  Full Action: {action}")
@@ -133,7 +128,6 @@ def log_action_basic(action) -> str:
 # =============================================================================
 
 def log_final_response(action, observation) -> tuple:
-    """Log PROVIDE_FINAL_RESPONSE details. Returns (final_response, is_correct, accuracy)."""
     final_response = getattr(action, 'response', '')
     is_correct = observation.metadata.get('is_correct') if observation.metadata else None
     accuracy = observation.metadata.get('accuracy', None) if observation.metadata else None
@@ -147,14 +141,12 @@ def log_final_response(action, observation) -> tuple:
 
 
 def log_think_action(action):
-    """Log THINK action details."""
     thought = getattr(action, 'thought', '')
     thought_preview = thought[:500] + '...' if len(thought) > 500 else thought
     logger.info(f"  Thought: {thought_preview}")
 
 
 def log_search_action(action, observation, action_type: str):
-    """Log CLOSED_SEARCH, OPEN_WEB_SEARCH, or OPEN_COURTLISTENER_SEARCH action details."""
     query = getattr(action, 'query', '')
     if action_type == "CLOSED_SEARCH":
         search_type = getattr(action, 'search_type', '')
@@ -190,7 +182,6 @@ def log_search_action(action, observation, action_type: str):
 
 
 def log_generic_observation(observation):
-    """Log a generic observation result."""
     result = observation.result
     if isinstance(result, str):
         obs_preview = result[:500] + '...' if len(result) > 500 else result
@@ -203,7 +194,6 @@ def log_generic_observation(observation):
 
 
 def log_beliefs(agent: "Agent"):
-    """Log current agent beliefs."""
     if not hasattr(agent, 'get_current_beliefs'):
         return
     
@@ -226,7 +216,6 @@ def log_beliefs(agent: "Agent"):
 # =============================================================================
 
 def _log_applied_filters(observation):
-    """Log automatically applied and inferred filters."""
     date_filter = observation.metadata.get('date_filter')
     field_filters = observation.metadata.get('field_filters')
     if date_filter or field_filters:
@@ -239,7 +228,6 @@ def _log_applied_filters(observation):
 
 
 def _log_closed_search_results(observation, query: str, search_type: str, num_results):
-    """Log closed search results."""
     search_results = observation.metadata.get('search_results', [])
     
     logger.info(f"\n  Search Details:")
@@ -264,7 +252,6 @@ def _log_closed_search_results(observation, query: str, search_type: str, num_re
 
 
 def _log_single_search_result(index: int, result):
-    """Log a single search result."""
     # Extract fields from SearchResult object or dict
     if hasattr(result, 'metadata'):
         result_id = getattr(result, 'result_id', 'N/A')
@@ -309,7 +296,6 @@ def _log_single_search_result(index: int, result):
 
 
 def _log_web_search_results(observation):
-    """Log web search results."""
     web_results = observation.metadata.get('web_search_results', [])
     if not web_results:
         return
@@ -332,4 +318,3 @@ def _log_web_search_results(observation):
         logger.info(f"       URL: {url}")
         logger.info(f"       Snippet: {truncated_snippet}")
         logger.info("")
-

@@ -138,7 +138,6 @@ class HallucinationCheckerEnvironment(Environment):
         logger.debug(f"Initialized Legal Hallucination Checker environment (max_steps={self.max_steps})")
 
     def _init_metadata_model_api(self) -> Optional[ModelAPI]:
-        """Initialize ModelAPI for metadata intent classification, if enabled. Not used for hallucination checker."""
         if not hasattr(self, "search_config") or self.search_config is None:
             return None
         if self.search_config.get("disable_metadata_intent_llm", False):
@@ -151,7 +150,6 @@ class HallucinationCheckerEnvironment(Environment):
 
     
     def _get_available_field_values(self, field_name: str, search_type: str = "task_specific_documents") -> set[str]:
-        """Get all unique values for a given field. Hallucination checker uses open search, not document indexes; returns empty."""
         # Hallucination checker does not use task_specific_documents or metadocuments dirs
         if not hasattr(self, "task_specific_documents_dir") and not hasattr(self, "metadocuments_dir"):
             return set()
@@ -196,7 +194,6 @@ class HallucinationCheckerEnvironment(Environment):
         return field_values
     
     def step(self, action: Action) -> Observation:
-        """Execute an action and return the resulting observation."""
         # Handle parsing failures by skipping the round
         if action is None:
             logger.warning("Agent returned None (parsing failed), skipping this round")
@@ -239,7 +236,6 @@ class HallucinationCheckerEnvironment(Environment):
             raise NotImplementedError(f"Action type {action.action_type} not implemented in HallucinationChecker environment.")
     
     def _handle_final_response_action(self, action: Action) -> Observation:
-        """Handle PROVIDE_FINAL_RESPONSE action (making verdict on hallucination)."""
         response = getattr(action, "response", "")
         
         # Set the answer for the base class's is_correct() method
@@ -262,7 +258,6 @@ class HallucinationCheckerEnvironment(Environment):
         return observation
     
     def _handle_think_action(self, action: Action) -> Observation:
-        """Handle THINK action (internal reasoning)."""
         thought = getattr(action, "thought", "")
         
         observation = Observation(
@@ -275,7 +270,6 @@ class HallucinationCheckerEnvironment(Environment):
         return observation
     
     def _handle_web_search_action(self, action: Action) -> Observation:
-        """Handle OPEN_WEB_SEARCH action (web search)."""
         query = getattr(action, "query", "")
         search_type = getattr(action, "search_type", "web")  # Default to "web" if not specified
         k = (
@@ -368,7 +362,6 @@ class HallucinationCheckerEnvironment(Environment):
         return observation
     
     def _handle_courtlistener_search_action(self, action: Action) -> Observation:
-        """Handle OPEN_COURTLISTENER_SEARCH action (CourtListener search)."""
         query = (getattr(action, "query", "") or "").strip()
         search_type = getattr(action, "search_type", "opinions")  # Default to "opinions" if not specified
         k = (
@@ -470,7 +463,6 @@ class HallucinationCheckerEnvironment(Environment):
         )
 
     def _handle_courtlistener_opinion_action(self, action: Action) -> Observation:
-        """Handle ACCESS_COURTLISTENER_OPINION: fetch opinion, store full text on disk, return snippet only."""
         opinion_id = (getattr(action, "opinion_id", "") or "").strip()
         if not opinion_id:
             error_msg = "ACCESS_COURTLISTENER_OPINION failed: missing opinion_id"
@@ -540,7 +532,6 @@ class HallucinationCheckerEnvironment(Environment):
             )
 
     def _handle_courtlistener_citation_lookup_action(self, action: Action) -> Observation:
-        """Handle COURTLISTENER_CITATION_LOOKUP: look up a reporter citation on CourtListener."""
         cite = (getattr(action, "cite", "") or "").strip()
         try:
             return execute_courtlistener_citation_lookup(cite)
@@ -562,7 +553,6 @@ class HallucinationCheckerEnvironment(Environment):
             )
             
     def _get_searchable_opinion_text(self, opinion: Any) -> str:
-        """Extract searchable plain text from opinion dict. CourtListener often has empty plain_text; fall back to HTML/XML fields."""
         if not isinstance(opinion, dict):
             return str(opinion)
         
@@ -579,7 +569,6 @@ class HallucinationCheckerEnvironment(Environment):
         return ""
 
     def _normalize_quotes_for_search(self, s: str) -> str:
-        """Normalize curly quotes/apostrophes to straight so brief and opinion text match."""
         if not s:
             return s
         s = s.replace("\u2019", "'").replace("\u2018", "'")  # curly apostrophes
@@ -587,7 +576,6 @@ class HallucinationCheckerEnvironment(Environment):
         return s
 
     def _handle_search_local_opinion_action(self, action: Action) -> Observation:
-        """Handle SEARCH_LOCAL_OPINION: search for string in cached opinion, return snippet around match or None."""
         opinion_id = (getattr(action, "opinion_id", "") or "").strip()
         search_string = (getattr(action, "search_string", "") or "").strip()
         if not opinion_id:
@@ -698,7 +686,6 @@ class HallucinationCheckerEnvironment(Environment):
         return chosen
 
     def _handle_read_document_action(self, action: Action) -> Observation:
-        """Handle READ_DOCUMENT: return a line-windowed slice of a registered document (e.g. fetched opinion)."""
         opinion_id = (getattr(action, "opinion_id", None) or getattr(action, "document_id", "") or "").strip()
         start_line = getattr(action, "start_line", 0)
         num_lines = getattr(action, "num_lines", 50)
@@ -765,7 +752,6 @@ class HallucinationCheckerEnvironment(Environment):
         )
 
     def _handle_edit_scratchpad_action(self, action: Action) -> Observation:
-        """Handle EDIT_SCRATCHPAD: append, insert, replace, or clear the agent's scratchpad."""
         operation = (getattr(action, "operation", "") or "").strip().lower()
         content = getattr(action, "content", "") or ""
         position = getattr(action, "position", None)
@@ -792,7 +778,6 @@ class HallucinationCheckerEnvironment(Environment):
         )
 
     def get_environment_description(self) -> str:
-        """Get environment description for agent prompts."""
         description =f"""
 You are expected to extract all CASE CITATIONS (no other types of citations like regulations, statutes, or other legal sources) and to:
 1) Verify Citation Existence: Determine whether the reporter citations correspond to real, verifiable legal cases.
@@ -806,24 +791,19 @@ BRIEF TEXT: {self.brief_text}\n\n"""
         return description
 
     def get_action_selection_environment_description(self) -> str:
-        """Get environment description for action selection."""
         return self.get_environment_description()
 
 
     def get_response_requirements(self) -> str:
-        """Get task-specific response requirements for predictions."""
         return get_response_requirements()
     
     def get_search_capabilities(self) -> str:
-        """Get description of search capabilities (OPEN_WEB_SEARCH + CourtListener)."""
         return get_search_capabilities_open_search()
     
     def get_search_history(self) -> List[Dict[str, Any]]:
-        """Get history of searches performed."""
         return self.search_history.copy()
     
     def _parse_response_to_list(self, response: str) -> List[str]:
-        """Parse final response string into a list of items. Prefer JSON array; fallback to semicolon-separated."""
         if not response or not str(response).strip():
             return []
         s = str(response).strip()
@@ -865,7 +845,6 @@ BRIEF TEXT: {self.brief_text}\n\n"""
         return float(predicted_answer == self.key)
     
     def is_done(self) -> bool:
-        """Check if the environment is done (max steps reached or final prediction made)."""
         if self.is_truncated():
             return True
         
@@ -875,11 +854,9 @@ BRIEF TEXT: {self.brief_text}\n\n"""
         
         return False
     def get_initial_observation(self) -> Observation:
-        """Get the initial observation with case information."""
         return self.initial_observation
     
     def reset(self):
-        """Reset the environment to initial state."""
         super().reset()
         self.current_step = 0
         self.search_history = []
@@ -897,7 +874,6 @@ BRIEF TEXT: {self.brief_text}\n\n"""
         logger.info("Environment reset")
     
     def get_stats(self) -> Dict[str, Any]:
-        """Get environment statistics."""
         return {
             "current_step": self.current_step,
             "max_steps": self.max_steps,
