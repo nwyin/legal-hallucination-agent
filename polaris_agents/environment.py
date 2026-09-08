@@ -13,6 +13,7 @@ import string
 from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Tuple
 
+from .tracing import langfuse
 from .actions import Action, ActionType
 from .courtlistener import (
     execute_courtlistener_search,
@@ -241,6 +242,25 @@ class HallucinationCheckerEnvironment(Environment):
         logger.debug(f"Initialized Legal Hallucination Checker environment (max_steps={self.max_steps})")
 
     def step(self, action: Action) -> Observation:
+        name = action.action_type.value.lower().replace("_", "-") if action else "skip-action"
+        retrieval_actions = {
+            ActionType.OPEN_WEB_SEARCH, ActionType.OPEN_COURTLISTENER_SEARCH,
+            ActionType.ACCESS_COURTLISTENER_OPINION, ActionType.COURTLISTENER_CITATION_LOOKUP,
+            ActionType.SEARCH_LOCAL_OPINION, ActionType.READ_DOCUMENT,
+        }
+        with langfuse.start_as_current_observation(
+            name=name,
+            as_type="retriever" if action and action.action_type in retrieval_actions else "tool",
+            input=action.get_input_parameters() if action else None,
+            metadata={"step": self.current_step + 1},
+        ) as span:
+            observation = self._execute_action(action)
+            span.update(output={"result": observation.result, "metadata": observation.metadata})
+            if observation.metadata and (observation.metadata.get("error") or observation.metadata.get("skipped")):
+                span.update(level="ERROR", status_message="Action failed or was skipped")
+            return observation
+
+    def _execute_action(self, action: Action) -> Observation:
         # Handle parsing failures by skipping the round
         if action is None:
             logger.warning("Agent returned None (parsing failed), skipping this round")

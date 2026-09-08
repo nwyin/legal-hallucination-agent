@@ -34,6 +34,51 @@ Set the required key(s) as environment variables, especially:
 
 - `OPENROUTER_API_KEY` (for all LLM calls)
 
+## Langfuse tracing
+
+Langfuse tracing is enabled when `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY`
+are configured. Add these to `.env` or export them before starting the runner:
+
+```dotenv
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_BASE_URL=https://cloud.langfuse.com
+LANGFUSE_TRACING_ENVIRONMENT=development
+```
+
+Use your project's region or self-hosted URL for `LANGFUSE_BASE_URL` (for example,
+`https://us.cloud.langfuse.com` for US Cloud). The normal experiment commands
+produce one `verify-legal-brief` agent trace per example, containing action
+selection, belief updates, predictions, retrieval/tool results, and individual
+OpenAI SDK generations with model, token usage, latency, and provider errors.
+Dataset, example, method, and final precision/recall/F1 appear as metadata.
+Results include `langfuse_trace_id` for correlation. The CLI flushes pending
+observations in `finally`; callers embedding `run_single_example` should call
+`polaris_agents.tracing.flush_traces()` before exiting.
+
+Brief text, model prompts/responses, and tool content are captured by default.
+Configured environment credentials are masked in exported span attributes;
+this does **not** anonymize legal text or detect arbitrary PII. Set
+`LANGFUSE_CAPTURE_CONTENT=false` to redact inputs, outputs, metadata, and error
+messages while retaining model usage and timing. Set `LANGFUSE_TRACING_ENABLED=false`
+to disable tracing altogether. An explicit `OTEL_SDK_DISABLED=true` also disables
+tracing and must be removed to see traces. Guardrails usage telemetry is disabled
+separately so it does not require disabling all OpenTelemetry.
+
+Optional SDK settings include `LANGFUSE_SAMPLE_RATE` (0–1) and `LANGFUSE_RELEASE`.
+See Langfuse's [tracing best practices](https://langfuse.com/docs/observability/best-practices).
+
+Verify the real SDK integration using recorded synthetic model responses:
+
+```bash
+# Offline: blocks network and checks exported span structure and token capture
+uv run --locked python scripts/smoke/tracing.py
+
+# Sends only synthetic test traces to the configured Langfuse project;
+# model responses are replayed, with no model API calls or charges
+uv run --locked python scripts/smoke/tracing.py --export
+```
+
 ## Running Experiments
 
 The entry point is `python -m polaris_agents.run`, configured via YAML files in `configs/`.

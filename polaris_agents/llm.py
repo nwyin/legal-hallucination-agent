@@ -5,7 +5,8 @@ import os
 from typing import Optional, Protocol, Union
 
 import attrs
-from openai import OpenAI
+from .tracing import langfuse  # Initialize before the OpenAI integration.
+from langfuse.openai import OpenAI
 
 logger = logging.getLogger(__name__)
 

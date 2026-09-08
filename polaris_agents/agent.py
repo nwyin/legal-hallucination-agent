@@ -11,6 +11,7 @@ import logging
 import re
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from .tracing import langfuse, observe
 from .actions import Action, ActionType, get_action_class
 from .environment import Environment, Observation
 from .llm import ModelAPI
@@ -359,6 +360,7 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
         logger.info(f"Initialized BayesianOptimalExperimentalDesignAgent")
         logger.info(f"Environment: {self.environment.__class__.__name__}")
     
+    @observe(name="update-beliefs", capture_input=False)
     def update_beliefs(self, observation: Observation, action: Action) -> str:
         """
         Update task-level beliefs based on the observation.
@@ -370,6 +372,7 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
         Returns:
             String representation of updated beliefs
         """
+        langfuse.update_current_span(input=str(observation), metadata={"step": self.current_step})
         # Skip belief update for initial observation (no action taken yet)
         if not observation or not observation.metadata or action is None:
             logger.info("Skipping belief update for initial observation (no action taken yet)")
@@ -498,6 +501,7 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
                 # Use full response as task beliefs
                 self.task_beliefs = text
     
+    @observe(name="select-action", capture_input=False, capture_output=False)
     def select_action(self, observation: Optional[Observation]) -> Action:
         """
         Select the next action using the BOED framework.
@@ -511,6 +515,7 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
         Returns:
             The selected action
         """
+        langfuse.update_current_span(input=str(observation), metadata={"step": self.current_step + 1})
         logger.info(f"BOED action selection (attempting step {self.current_step + 1})")
         
         # Step 1: Update beliefs based on current observation
@@ -560,6 +565,12 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             self.current_step += 1
             self.last_action = action
             logger.info(f"Selected action: {action.action_type.value} (step {self.current_step})")
+            langfuse.update_current_span(output={
+                "action_type": action.action_type.value,
+                "parameters": action.get_input_parameters(),
+            })
+        else:
+            langfuse.update_current_span(level="ERROR", status_message="Action selection returned no action")
         
         return action
     
@@ -755,6 +766,7 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             'design_beliefs': ''  # Empty for BOED - only has task beliefs
         }
     
+    @observe(name="predict-hallucinations", capture_input=False)
     def get_current_prediction(self) -> Tuple[Optional[str], Optional[float]]:
         """
         Get the agent's current best prediction based on accumulated beliefs.
@@ -804,6 +816,7 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             )
             
             prompt = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
+            langfuse.update_current_span(input=prompt, metadata={"step": self.current_step})
             
             # Get prediction from the agent's own model
             prediction_max_tokens = self.max_tokens_config.get('prediction', self.max_tokens)
@@ -839,6 +852,7 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
                     prediction, confidence = parse_prediction_response(response)
                 except (ValueError, KeyError) as e2:
                     logger.warning(f"Retry also failed: {response}, error: {e2}")
+                    langfuse.update_current_span(level="ERROR", status_message="Prediction parsing failed after retry")
                     return None, None
 
             # Normalize Yes/No answers if applicable
@@ -852,6 +866,7 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
                 
         except Exception as e:
             logger.error(f"Error getting current prediction: {e}")
+            langfuse.update_current_span(level="ERROR", status_message=type(e).__name__)
             return None, None
     
     def reset(self):

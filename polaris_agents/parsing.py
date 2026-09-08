@@ -5,7 +5,7 @@ import logging
 import re
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
-from guardrails import Guard
+from guardrails import Guard, settings as guardrails_settings
 from guardrails.validators import (
     FailResult,
     PassResult,
@@ -17,6 +17,10 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 from .actions import ActionType, Action
 
 logger = logging.getLogger(__name__)
+
+# Keep model calls parented to our application spans. Guardrails' internal
+# spans are not exported by Langfuse and otherwise leave dangling parents.
+guardrails_settings.disable_tracing = True
 
 
 # --- JSON and prediction response helpers ---
@@ -564,6 +568,7 @@ def create_unified_action_guard(model_api, model_id: str, provider: str,
     
     # Create Guard from Pydantic model
     unified_guard = Guard.for_pydantic(ActionChoice)
+    unified_guard.configure(allow_metrics_collection=False)
     
     # Create a wrapper that calls the unified guard and transforms the output
     class UnifiedActionGuard:

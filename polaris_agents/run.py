@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
+from .tracing import langfuse, observe, propagate_attributes, flush_traces
 from .agent import Agent
 from .environment import Environment, HallucinationCheckerEnvironment, Observation
 from .llm import ModelAPI
@@ -37,9 +38,6 @@ from .recording import (
 )
 
 load_dotenv()
-
-# Disable OpenTelemetry tracing (prevents 429 "Too Many Requests" from trace exporter)
-os.environ.setdefault("OTEL_SDK_DISABLED", "true")
 
 logger = logging.getLogger(__name__)
 
@@ -647,6 +645,7 @@ def log_results(summary: Dict[str, Any], method: str, example_id: str = None):
 # SINGLE EXAMPLE RUNNER
 # =============================================================================
 
+@observe(name="verify-legal-brief", as_type="agent", capture_input=False, capture_output=False)
 def run_single_example(
     method: str,
     example: Dict[str, Any],
@@ -664,6 +663,12 @@ def run_single_example(
     model_api: ModelAPI = None,
 ) -> Dict[str, Any]:
     """Run a single example and return results."""
+    langfuse.update_current_span(
+        input=example.get("text", ""),
+        metadata={"example_id": example_id, "dataset": dataset, "method": method,
+                  "model": model_config.get("model_id"),
+                  "max_steps": env_settings.get("max_steps", 30)},
+    )
     if model_api is None:
         model_api = ModelAPI()
     
@@ -737,10 +742,14 @@ def run_single_example(
         metrics_collector.set_task_performance_ground_truth(ground_truth, environment)
     
     # Run episode
-    summary = run_episode(agent, environment, metrics_collector)
-    
-    # Evaluate final prediction once (no per-step prediction evaluation)
-    metrics_collector.record_final_prediction(agent, environment)
+    with propagate_attributes(
+        tags=["legal-hallucination-checker", method],
+        metadata={"dataset": dataset, "example_id": example_id, "method": method},
+    ):
+        summary = run_episode(agent, environment, metrics_collector)
+
+        # Evaluate final prediction once (no per-step prediction evaluation)
+        metrics_collector.record_final_prediction(agent, environment)
     
     # End metrics collection; include ground truth + prediction + raw response for evaluation
     extra_data = {
@@ -755,6 +764,15 @@ def run_single_example(
     summary['metrics_filepath'] = metrics_filepath
     summary['episode_id'] = example_id
     summary['example_id'] = example_id
+    langfuse.update_current_span(
+        output=summary.get("final_response"),
+        metadata={"precision": summary.get("precision"), "recall": summary.get("recall"),
+                  "f1": summary.get("f1"), "total_steps": summary.get("total_steps")},
+        level="ERROR" if summary.get("final_response") is None else "DEFAULT",
+        status_message="No final response" if summary.get("final_response") is None else None,
+    )
+    if langfuse.get_current_trace_id():
+        summary["langfuse_trace_id"] = langfuse.get_current_trace_id()
     
     # Log results
     log_results(summary, method, example_id)
@@ -950,4 +968,7 @@ def main(cfg: DictConfig):
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        flush_traces()
