@@ -18,9 +18,17 @@ The agent uses **Bayesian Optimal Experimental Design (BOED)** to strategically 
 
 ## Setup
 
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then create
+the project environment from the committed lockfile:
+
 ```bash
-pip install -r requirements.txt
+uv sync --locked
 ```
+
+The project currently targets Python 3.12.
+
+Use `uv add <package>` and `uv remove <package>` to manage dependencies.
+After editing `pyproject.toml` manually, run `uv lock` and `uv sync`.
 
 Set the required key(s) as environment variables, especially:
 
@@ -32,14 +40,14 @@ The entry point is `scripts/experiments/run_experiment.py`, configured via YAML 
 
 ```bash
 # Run on all examples in a dataset
-python scripts/experiments/run_experiment.py --config-name=legal_hallucination_checker_gpt
+uv run --locked python scripts/experiments/run_experiment.py --config-name=legal_hallucination_checker_gpt
 
 # Run a single example by filename
-python scripts/experiments/run_experiment.py --config-name=legal_hallucination_checker_gpt \
+uv run --locked python scripts/experiments/run_experiment.py --config-name=legal_hallucination_checker_gpt \
   data.example_id=caryn-strickland-v-united-states_191787292.pdf
 
 # Limit batch size
-python scripts/experiments/run_experiment.py --config-name=legal_hallucination_checker_gpt \
+uv run --locked python scripts/experiments/run_experiment.py --config-name=legal_hallucination_checker_gpt \
   data.limit=5
 ```
 

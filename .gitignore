@@ -1,3 +1,6 @@
 # Python cache and bytecode
 __pycache__/
 *.pyc
+
+# Local Python environment
+.venv/
