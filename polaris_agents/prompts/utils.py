@@ -28,25 +28,6 @@ def get_canonical_theta_definition() -> str:
     )
 
 
-def get_canonical_design_definition() -> str:
-    """
-    Get the canonical definition of design parameters (D).
-    
-    This is the shared definition used consistently across all prompts.
-    
-    Returns:
-        Canonical definition string for D
-    """
-    return (
-        "Meta-level methodology: how experts make predictions in this domain — the factors they consider, "
-        "how they model key decision-makers (if any are relevant to the outcome), and how they weigh and interpret signals. "
-        "Domain-level understanding: key concepts, frameworks, theories, and doctrines relevant to this problem class; "
-        "background knowledge that provides context; and problem-solving strategies/techniques that generalize across similar problems. "
-        "Information-gathering strategies: effective tool use, query formulation, what search terms/approaches work, "
-        "how to refine failed queries, and what sources are most valuable for this type of problem."
-    )
-
-
 def build_action_guidelines(action_space: List[ActionType]) -> str:
     """
     Build action guidelines based on available actions.
