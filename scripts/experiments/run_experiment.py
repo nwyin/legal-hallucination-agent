@@ -146,7 +146,7 @@ def check_required_api_key(provider: str) -> bool:
     }
     normalized_provider = (provider or "").lower().strip()
     if normalized_provider != "openrouter":
-        logger.error("Only OpenRouter is supported. Set agent.model.provider (and evaluation_model.provider, if set) to 'openrouter'.")
+        logger.error("Only OpenRouter is supported. Set agent.model.provider to 'openrouter'.")
         return False
     required_key = key_map.get(normalized_provider)
     if required_key and not os.getenv(required_key):
@@ -460,7 +460,6 @@ def run_episode(
             
             metrics_collector.record_step(
                 action=action,
-                agent=agent,
                 reward=None,
                 metadata={
                     'observation_result': observation.result,
@@ -672,7 +671,6 @@ def run_single_example(
     env_settings: Dict[str, Any],
     model_config: Dict[str, Any],
     agent_config: Dict[str, Any],
-    eval_model_config: Dict[str, Any],
     eval_settings: Dict[str, Any],
     output_dir: str,
     metrics_dir: str,
@@ -725,7 +723,6 @@ def run_single_example(
     )
     
     # Create metrics collector
-    has_beliefs = method in ['boed', 'boed_citation_tracker']
     model_id = model_config.get('model_id', 'unknown')
 
     # Metrics go to: metrics/{dataset}/{model_id}/{method}_steps{max_steps}/
@@ -733,28 +730,13 @@ def run_single_example(
     method_with_steps = f"{method}_steps{max_steps}" if max_steps is not None else method
     example_metrics_dir = os.path.join(metrics_dir, dataset, model_id, method_with_steps)
     
-    # Check evaluation settings - 'enabled' is master switch for all evaluation
-    eval_enabled = eval_settings.get('enabled', True)
-    # EIG estimation can be disabled separately (extra LLM call per step when on)
-    enable_eig = eval_settings.get('enable_eig_estimation', eval_enabled)
-    # Action classification (task vs design focus scoring) can be disabled separately
-    enable_action_classification = eval_settings.get('enable_action_classification', eval_enabled)
-    # Belief evolution tracking (complexity analysis per step; extra LLM call)
-    enable_belief_evolution = eval_settings.get('enable_belief_evolution_tracking', eval_enabled)
-    
+    # This toggle controls the final-performance summary only; recording and
+    # the episode's final span scoring remain available regardless.
     metrics_collector = create_metrics_collector(
-        model_api=model_api,
-        model_name=eval_model_config.get('model_id', model_config.get('model_id')),
-        provider=eval_model_config.get('provider', model_config.get('provider')),
-        max_tokens=eval_model_config.get('max_tokens', 10000),
         save_dir=example_metrics_dir,
-        enable_action_classification=enable_action_classification,
-        enable_task_performance_tracking=eval_enabled,
-        enable_eig_estimation=enable_eig,
-        enable_belief_evolution_tracking=has_beliefs and enable_belief_evolution,
-        domain_knowledge=TASK_DOMAIN_KNOWLEDGE
+        enable_task_performance_tracking=eval_settings.get('enabled', True),
     )
-    
+
     # Start metrics collection
     metrics_collector.start_episode(
         episode_id=example_id,
@@ -832,15 +814,9 @@ def main(cfg: DictConfig):
     env_settings = OmegaConf.to_container(cfg.environment, resolve=True)
     agent_config = OmegaConf.to_container(cfg.agent, resolve=True)
     model_config = resolve_agent_model_config(cfg)
-    eval_model_config = OmegaConf.to_container(cfg.get('evaluation_model', model_config), resolve=True)
     eval_settings = OmegaConf.to_container(cfg.get('evaluation', {}), resolve=True)
 
     model_config = _enforce_openrouter_provider(model_config, "agent.model.provider")
-    eval_model_config = _enforce_openrouter_provider(
-        eval_model_config,
-        "evaluation_model.provider",
-    )
-    
     # Check API key
     if not check_required_api_key(model_config.get('provider')):
         return
@@ -925,7 +901,6 @@ def main(cfg: DictConfig):
                 env_settings=env_settings,
                 model_config=model_config,
                 agent_config=agent_config,
-                eval_model_config=eval_model_config,
                 eval_settings=eval_settings,
                 output_dir=output_dir,
                 metrics_dir=metrics_dir,

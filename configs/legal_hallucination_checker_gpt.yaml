@@ -47,12 +47,9 @@ agent:
   courtlistener_search_enabled: true
   courtlistener_opinion_access_enabled: true
 
-# Evaluation settings
+# Optional final-performance summary (span scoring and trajectory recording always run)
 evaluation:
-  enabled: false  # Master switch for task performance, belief tracking
-  enable_eig_estimation: false  # Post-hoc EIG estimation per step (extra LLM call)
-  enable_action_classification: false  # Task vs design focus scoring per step (extra LLM call)
-  enable_belief_evolution_tracking: false  # Belief complexity analysis per step (extra LLM call)
+  enabled: false  # Track the final submitted prediction in task_performance_summary
 
 # Search Configuration
 search:

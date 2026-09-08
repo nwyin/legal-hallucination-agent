@@ -8,13 +8,10 @@ enabling later analysis and plotting without re-running episodes.
 import json
 import os
 import logging
-from typing import Dict, Any, Optional, List, Union
-from dataclasses import dataclass, asdict
+from typing import Dict, Any, Optional, List
+from dataclasses import dataclass, asdict, fields
 from datetime import datetime
-from .action_classifier import ActionClassifier, ActionClassificationResult
-from .task_performance_tracker import TaskPerformanceTracker, PredictionResult
-from .eig_estimator import EIGEstimator, EIGEstimationResult
-from .belief_evolution_tracker import BeliefEvolutionTracker, BeliefEvolutionResult
+from .task_performance_tracker import TaskPerformanceTracker
 
 logger = logging.getLogger(__name__)
 
@@ -25,32 +22,11 @@ class StepMetrics:
     action_type: str
     action_content: str
     reward: Optional[float] = None
-    task_focus_score: Optional[float] = None
-    classification_confidence: Optional[float] = None
-    classification_reasoning: Optional[str] = None
     # Task performance tracking fields
     prediction: Optional[str] = None
     prediction_confidence: Optional[float] = None
     prediction_correct: Optional[bool] = None
     prediction_accuracy: Optional[float] = None
-    # EIG estimation fields
-    task_eig: Optional[float] = None
-    design_eig: Optional[float] = None
-    joint_eig: Optional[float] = None
-    eig_confidence: Optional[float] = None
-    eig_reasoning: Optional[str] = None
-    # Belief evolution fields
-    task_belief_accuracy: Optional[float] = None
-    task_belief_mean_kl_bits: Optional[float] = None
-    task_belief_baseline_kl_bits: Optional[float] = None
-    task_belief_uncertainty: Optional[float] = None
-    inferred_arm_probs: Optional[List[float]] = None
-    task_belief_complexity: Optional[float] = None
-    design_belief_complexity: Optional[float] = None
-    belief_coherence: Optional[float] = None
-    information_density: Optional[float] = None
-    complexity_confidence: Optional[float] = None
-    complexity_reasoning: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
 
 @dataclass
@@ -68,10 +44,7 @@ class EpisodeMetrics:
     total_reward: float = 0.0
     final_outcome: Optional[str] = None
     step_metrics: List[StepMetrics] = None
-    classification_summary: Optional[Dict[str, Any]] = None
     task_performance_summary: Optional[Dict[str, Any]] = None
-    eig_summary: Optional[Dict[str, Any]] = None
-    belief_evolution_summary: Optional[Dict[str, Any]] = None
     
     def __post_init__(self):
         if self.step_metrics is None:
@@ -84,25 +57,17 @@ class MetricsCollector:
     
     def __init__(
         self, 
-        action_classifier: Optional[ActionClassifier] = None,
         task_performance_tracker: Optional[TaskPerformanceTracker] = None,
-        eig_estimator: Optional[EIGEstimator] = None,
-        belief_evolution_tracker: Optional[BeliefEvolutionTracker] = None,
         save_dir: str = "metrics"
     ):
         """
         Initialize the metrics collector.
         
         Args:
-            action_classifier: Optional action classifier for task/design focus evaluation
             task_performance_tracker: Optional task performance tracker for prediction evaluation
-            eig_estimator: Optional EIG estimator for information gain evaluation
             save_dir: Directory to save metrics files
         """
-        self.action_classifier = action_classifier
         self.task_performance_tracker = task_performance_tracker
-        self.eig_estimator = eig_estimator
-        self.belief_evolution_tracker = belief_evolution_tracker
         self.save_dir = save_dir
         self.current_episode: Optional[EpisodeMetrics] = None
         self.step_count = 0
@@ -160,24 +125,9 @@ class MetricsCollector:
         else:
             logger.warning("Task performance tracker not available - cannot set ground truth")
     
-    def set_belief_evolution_ground_truth(self, ground_truth: Any, task_type: str) -> None:
-        """
-        Set ground truth for belief evolution tracking.
-        
-        Args:
-            ground_truth: Ground truth for belief accuracy evaluation (e.g., true arm probabilities)
-            task_type: Type of task (e.g., "multi_armed_bandit")
-        """
-        if self.belief_evolution_tracker:
-            self.belief_evolution_tracker.set_ground_truth(ground_truth, task_type)
-            logger.info(f"Set ground truth for belief evolution tracking: {ground_truth}")
-        else:
-            logger.warning("Belief evolution tracker not available - cannot set ground truth")
-    
     def record_step(
         self, 
         action, 
-        agent,
         reward: Optional[float] = None,
         metadata: Optional[Dict[str, Any]] = None
     ) -> None:
@@ -186,7 +136,6 @@ class MetricsCollector:
         
         Args:
             action: The action taken
-            agent: The agent instance
             reward: Optional reward received
             metadata: Optional additional metadata
         """
@@ -208,97 +157,6 @@ class MetricsCollector:
             reward=reward,
             metadata=metadata or {}
         )
-        
-        # Extract beliefs and observation from metadata if available
-        current_beliefs = None
-        if metadata:
-            current_beliefs = metadata.get('current_beliefs')
-        
-        observation_result = None
-        observation_metadata = None
-        if metadata:
-            observation_result = metadata.get('observation_result')
-            observation_metadata = metadata.get('observation_metadata')
-        
-        # External LLM-based metrics
-        # Uses external LLM to classify task vs design focus of current action
-        if self.action_classifier:
-            try:
-                context = {
-                    'task_name': self.current_episode.task_name,
-                    'environment_info': str(self.current_episode.environment_info),
-                    'current_beliefs': current_beliefs  # Pass full beliefs
-                }
-                classification_result = self.action_classifier.classify_action(
-                    step=self.step_count,
-                    action=action,
-                    context=context
-                )
-                
-                step_metrics.task_focus_score = classification_result.task_focus_score
-                step_metrics.classification_confidence = classification_result.confidence
-                step_metrics.classification_reasoning = classification_result.reasoning
-                
-            except Exception as e:
-                logger.warning(f"Action classification failed at step {self.step_count}: {e}")
-        
-        # Uses external LLM to estimate TRUE information gain (post-hoc) of the current action
-        if self.eig_estimator:
-            try:
-                context = {
-                    'task_name': self.current_episode.task_name,
-                    'environment_info': str(self.current_episode.environment_info),
-                    'current_beliefs': current_beliefs,  # Pass full beliefs
-                    'observation_result': observation_result,  # Pass full observation
-                    'observation_metadata': observation_metadata
-                }
-                eig_result = self.eig_estimator.estimate_eig_at_step(
-                    step=self.step_count,
-                    agent=agent,
-                    action=action,
-                    context=context
-                )
-                
-                step_metrics.task_eig = eig_result.task_eig
-                step_metrics.design_eig = eig_result.design_eig
-                step_metrics.joint_eig = eig_result.joint_eig
-                step_metrics.eig_confidence = eig_result.confidence
-                step_metrics.eig_reasoning = eig_result.reasoning
-                
-            except Exception as e:
-                logger.warning(f"EIG estimation failed at step {self.step_count}: {e}")
-        
-        # Prediction evaluation is done once at end of episode via record_final_prediction(), not every step.
-
-        # At each step, evaluates belief complexity (LLM-as-a-judge) and bandit-specific accuracy (agent model-based)
-        if self.belief_evolution_tracker:
-            try:
-                # Extract beliefs from agent if available
-                task_beliefs = getattr(agent, 'task_beliefs', '')
-                design_beliefs = getattr(agent, 'design_beliefs', '')
-                
-                if task_beliefs or design_beliefs:
-                    belief_result = self.belief_evolution_tracker.track_belief_evolution(
-                        step=self.step_count,
-                        task_beliefs=task_beliefs,
-                        design_beliefs=design_beliefs,
-                        agent=agent
-                    )
-                    
-                    step_metrics.task_belief_accuracy = belief_result.task_belief_accuracy
-                    step_metrics.task_belief_mean_kl_bits = belief_result.task_belief_mean_kl_bits
-                    step_metrics.task_belief_baseline_kl_bits = belief_result.task_belief_baseline_kl_bits
-                    step_metrics.task_belief_uncertainty = belief_result.task_belief_uncertainty
-                    step_metrics.inferred_arm_probs = belief_result.inferred_arm_probs
-                    step_metrics.task_belief_complexity = belief_result.task_belief_complexity
-                    step_metrics.design_belief_complexity = belief_result.design_belief_complexity
-                    step_metrics.belief_coherence = belief_result.belief_coherence
-                    step_metrics.information_density = belief_result.information_density
-                    step_metrics.complexity_confidence = belief_result.complexity_confidence
-                    step_metrics.complexity_reasoning = belief_result.complexity_reasoning
-                    
-            except Exception as e:
-                logger.warning(f"Belief evolution tracking failed at step {self.step_count}: {e}")
         
         # Add to episode
         self.current_episode.step_metrics.append(step_metrics)
@@ -347,22 +205,9 @@ class MetricsCollector:
         self.current_episode.total_steps = self.step_count
         self.current_episode.final_outcome = final_outcome
         
-        # Get classification summary if available
-        if self.action_classifier:
-            self.current_episode.classification_summary = self.action_classifier.get_classification_summary()
-        
         # Get task performance summary if available
         if self.task_performance_tracker:
             self.current_episode.task_performance_summary = self.task_performance_tracker.get_performance_summary()
-        
-        # Get EIG summary if available
-        if self.eig_estimator:
-            self.current_episode.eig_summary = self.eig_estimator.get_eig_summary()
-        
-        # Get belief evolution summary if available
-        if self.belief_evolution_tracker:
-            self.current_episode.belief_evolution_summary = self.belief_evolution_tracker.get_belief_evolution_summary()
-        
         
         # Save metrics directly to save_dir/{episode_id}.json
         # The caller is responsible for setting save_dir to the appropriate path
@@ -453,9 +298,11 @@ class MetricsCollector:
         with open(filepath, 'r') as f:
             data = json.load(f)
         
-        # Convert step metrics back to StepMetrics objects
+        # Ignore fields outside the current schema, including historical diagnostics.
+        step_fields = {field.name for field in fields(StepMetrics)}
         step_metrics = [
-            StepMetrics(**step_data) for step_data in data.get('step_metrics', [])
+            StepMetrics(**{key: value for key, value in step_data.items() if key in step_fields})
+            for step_data in data.get('step_metrics', [])
         ]
         
         # Create EpisodeMetrics object
@@ -465,15 +312,14 @@ class MetricsCollector:
             agent_type=data['agent_type'],
             environment_info=data['environment_info'],
             start_time=data['start_time'],
+            method=data.get('method'),
+            model_id=data.get('model_id'),
             end_time=data.get('end_time'),
             total_steps=data.get('total_steps', 0),
             total_reward=data.get('total_reward', 0.0),
             final_outcome=data.get('final_outcome'),
             step_metrics=step_metrics,
-            classification_summary=data.get('classification_summary'),
             task_performance_summary=data.get('task_performance_summary'),
-            eig_summary=data.get('eig_summary'),
-            belief_evolution_summary=data.get('belief_evolution_summary')
         )
         
         return episode
