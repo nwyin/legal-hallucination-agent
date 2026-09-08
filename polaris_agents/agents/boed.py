@@ -18,15 +18,12 @@ from ..actions import Action, ActionType, get_action_class
 from ..environments.base import Environment, Observation
 from ..llm import ModelAPI
 from .base import Agent
-from .parser import (
+from ..parsing import (
     parse_action_output_with_fallback,
     create_unified_action_guard,
     normalize_action_parameters_for_construction,
-)
-from .utils import (
-    extract_action_parameters, 
-    parse_prediction_response, 
-    normalize_yes_no_answers, 
+    parse_prediction_response,
+    normalize_yes_no_answers,
     parse_json_from_text,
 )
 
@@ -43,6 +40,35 @@ from ..prompts import (
 
 
 logger = logging.getLogger(__name__)
+
+
+def extract_action_parameters(action: Any) -> Dict[str, Any]:
+    """
+    Extract parameters from an action using the action class `inputs` schema.
+    
+    Args:
+        action: Action instance to extract parameters from
+        
+    Returns:
+        Dictionary of parameter names to values (only non-None values)
+        
+    Rules:
+        - Include all fields defined in the `inputs` schema (required and optional)
+        - For each field, read the value from the action instance when set (not None)
+        - Omit fields that are unset (None) to avoid redundant defaults
+    """
+    params: Dict[str, Any] = {}
+    inputs_schema = getattr(action.__class__, 'inputs', None)
+    if not isinstance(inputs_schema, dict):
+        return params
+        
+    for name, _spec in inputs_schema.items():
+        if hasattr(action, name):
+            value = getattr(action, name)
+            if value is not None:
+                params[name] = value
+                
+    return params
 
 
 UNIFORM_TASK_PRIOR = "You have no initial knowledge about the specific task parameters."
