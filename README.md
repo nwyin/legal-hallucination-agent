@@ -2,6 +2,15 @@
 
 An LLM agent that verifies citations, quotes, and holdings in legal briefs. Given a brief, the agent iteratively searches for and checks each citation using web search and CourtListener, then produces a final verdict on whether each citation is hallucinated.
 
+## Research Context and Attribution
+
+This project is aligned with the methodology from the paper [Who Checks the Citations? Benchmarking Legal Hallucination Detection](https://arxiv.org/html/2606.21155v2) (Liu, Stammbach, Henderson, 26 Jun 2026, arXiv:2606.21155v2).
+
+The paper introduces:
+- A taxonomy of legal citation hallucination types from real court filing failures.
+- The LePhantomCite dataset of 1,300 brief excerpts with injected hallucinations.
+- Agentic and non-agentic benchmarking of models for citation verification using tools like CourtListener, showing strong gains from retrieval-guided verification but persistent weakness on subtle citation errors.
+
 ## How It Works
 
 The agent uses **Bayesian Optimal Experimental Design (BOED)** to strategically select which citation to investigate next. It maintains a running list of citations found in the brief, tracking verification status (pending / verified / hallucinated) for each. The belief state is represented in natural language and updated after each observation, so the agent is less likely to forget previously checked citations.
