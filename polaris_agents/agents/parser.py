@@ -155,13 +155,6 @@ class EditScratchpadAction(BaseModel):
     content: str = Field(..., description="The content to add, insert, or replace in the scratchpad")
     position: Optional[int] = Field(None, description="The position for insert/replace operations (0-indexed). Required for 'insert' and 'replace' operations. Ignored for 'append' and 'clear' operations. Optional.")
 
-class ClosedSearchAction(BaseModel):
-    action_type: Literal[ActionType.CLOSED_SEARCH.value] = Field(..., description="The type of action")
-    query: str = Field(..., description="Search query for finding relevant information")
-    search_type: str = Field(..., description="Type of documents to search (see environment's Search Capabilities for available options)")
-    k: Optional[int] = Field(10, description="Number of results to return")
-    # Note: date_filter, field_filters, must_have_fields are handled automatically by the environment
-
 # Create the discriminated union
 ActionUnion = Union[
     ProvideFinalResponseAction,
@@ -172,8 +165,7 @@ ActionUnion = Union[
     AccessCourtListenerOpinionAction,
     SearchLocalOpinionAction,
     ReadDocumentAction,
-    EditScratchpadAction,
-    ClosedSearchAction
+    EditScratchpadAction
 ]
 
 # Main ActionChoice model with discriminated union

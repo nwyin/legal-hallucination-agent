@@ -50,7 +50,6 @@ def log_initial_state(agent: "Agent", environment: "Environment", observation, t
     logger.info(f"Max Tokens Config: {getattr(agent, 'max_tokens_config', 'N/A')}")
     logger.info(f"Action Space: {[a.value for a in agent.action_space]}")
     logger.info(f"Thinking Enabled: {getattr(agent, 'thinking_enabled', 'N/A')}")
-    logger.info(f"Closed Search Enabled: {getattr(agent, 'closed_search_enabled', 'N/A')}")
     logger.info(f"Open Web Search Enabled: {getattr(agent, 'open_web_search_enabled', 'N/A')}")
     
     log_first_step_prompts(agent, environment, observation)
@@ -148,13 +147,6 @@ def log_think_action(action):
 
 def log_search_action(action, observation, action_type: str):
     query = getattr(action, 'query', '')
-    if action_type == "CLOSED_SEARCH":
-        search_type = getattr(action, 'search_type', '')
-    elif action_type == "OPEN_COURTLISTENER_SEARCH":
-        search_type = getattr(action, 'search_type', 'opinions')
-    else:
-        search_type = 'web'
-    k = getattr(action, 'k', None)
     num_results = observation.metadata.get('num_results', None)
     
     # Check for errors first and log them prominently
@@ -162,22 +154,12 @@ def log_search_action(action, observation, action_type: str):
     if error_msg:
         logger.error(f"  ❌ SEARCH ERROR: {error_msg}")
         logger.info(f"  Query: {query}")
-        if action_type == "CLOSED_SEARCH":
-            logger.info(f"  Search Type: {search_type}")
         return
     
     logger.info(f"  Query: {query}")
-    if action_type == "CLOSED_SEARCH":
-        logger.info(f"  Search Type: {search_type}")
-        if k is not None:
-            logger.info(f"  k: {k}")
     logger.info(f"  Number of Results: {num_results}")
     
-    # Log inferred/applied filters
-    if action_type == "CLOSED_SEARCH":
-        _log_applied_filters(observation)
-        _log_closed_search_results(observation, query, search_type, num_results)
-    elif action_type == "OPEN_WEB_SEARCH":
+    if action_type == "OPEN_WEB_SEARCH":
         _log_web_search_results(observation)
 
 
@@ -214,86 +196,6 @@ def log_beliefs(agent: "Agent"):
 # =============================================================================
 # SEARCH RESULT HELPERS (internal)
 # =============================================================================
-
-def _log_applied_filters(observation):
-    date_filter = observation.metadata.get('date_filter')
-    field_filters = observation.metadata.get('field_filters')
-    if date_filter or field_filters:
-        log_parts = []
-        if date_filter:
-            log_parts.append(f"date_filter={date_filter}")
-        if field_filters:
-            log_parts.append(f"field_filters={field_filters}")
-        logger.info(f"  Inferred/Applied: {', '.join(log_parts)}")
-
-
-def _log_closed_search_results(observation, query: str, search_type: str, num_results):
-    search_results = observation.metadata.get('search_results', [])
-    
-    logger.info(f"\n  Search Details:")
-    logger.info(f"    Query: '{query}'")
-    logger.info(f"    Search Type: {search_type}")
-    logger.info(f"    Number of Results: {num_results}")
-    
-    # Log applied field filters from first result
-    if search_results and hasattr(search_results[0], 'metadata'):
-        first_meta = search_results[0].metadata or {}
-        auto_filters = first_meta.get('auto_metadata_filters')
-        if auto_filters:
-            logger.info(f"    Applied Field Filters: {auto_filters}")
-    
-    if not search_results:
-        logger.warning(f"  ⚠️ No results returned for CLOSED_SEARCH query: '{query}' (search_type: {search_type})")
-        return
-    
-    logger.info(f"  Closed Search Results ({search_type}):")
-    for i, result in enumerate(search_results[:3]):
-        _log_single_search_result(i, result)
-
-
-def _log_single_search_result(index: int, result):
-    # Extract fields from SearchResult object or dict
-    if hasattr(result, 'metadata'):
-        result_id = getattr(result, 'result_id', 'N/A')
-        title = getattr(result, 'title', 'N/A')
-        contents = result.metadata.get('contents', '') if result.metadata else ''
-        score = result.metadata.get('score', 'N/A') if result.metadata else 'N/A'
-        link_name = result.metadata.get('link_name', 'N/A') if result.metadata else 'N/A'
-        proceeding_title = result.metadata.get('proceeding_title', 'N/A') if result.metadata else 'N/A'
-        published_date = result.metadata.get('published_epoch_seconds', 'N/A') if result.metadata else 'N/A'
-    elif isinstance(result, dict):
-        result_id = result.get('result_id', 'N/A')
-        title = result.get('title', 'N/A')
-        if 'metadata' in result and isinstance(result['metadata'], dict):
-            contents = result['metadata'].get('contents', '')
-            score = result['metadata'].get('score', 'N/A')
-            link_name = result['metadata'].get('link_name', 'N/A')
-            proceeding_title = result['metadata'].get('proceeding_title', 'N/A')
-            published_date = result['metadata'].get('published_epoch_seconds', 'N/A')
-        else:
-            contents = result.get('contents', '')
-            score = result.get('score', 'N/A')
-            link_name = 'N/A'
-            proceeding_title = 'N/A'
-            published_date = 'N/A'
-    else:
-        result_id, title, contents, score = 'N/A', 'N/A', '', 'N/A'
-        link_name, proceeding_title, published_date = 'N/A', 'N/A', 'N/A'
-    
-    truncated_contents = contents[:300] + "..." if len(contents) > 300 else contents
-    title_preview = title[:100] + '...' if len(title) > 100 else title
-    proc_preview = str(proceeding_title)[:80] + '...' if len(str(proceeding_title)) > 80 else proceeding_title
-    
-    logger.info(f"\n    Result {index + 1}:")
-    logger.info(f"      ID: {result_id}")
-    logger.info(f"      Title: {title_preview}")
-    logger.info(f"      Score: {score}")
-    logger.info(f"      Link Name: {link_name}")
-    logger.info(f"      Proceeding Title: {proc_preview}")
-    logger.info(f"      Published Date: {published_date}")
-    if contents:
-        logger.info(f"      Contents Preview: {truncated_contents}")
-
 
 def _log_web_search_results(observation):
     web_results = observation.metadata.get('web_search_results', [])

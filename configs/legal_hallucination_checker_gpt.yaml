@@ -44,7 +44,6 @@ agent:
     eig_estimate: 4096      # For get_eig_estimate calls
   
   thinking_enabled: true
-  closed_search_enabled: false
   open_web_search_enabled: true
   courtlistener_search_enabled: true
   courtlistener_opinion_access_enabled: true

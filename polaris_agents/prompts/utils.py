@@ -118,16 +118,7 @@ def build_action_guidelines(action_space: List[ActionType]) -> str:
         guidelines.append(f"- **{action_type.name}**: {description}")
     
     # Add detailed guidance for search actions if present
-    if ActionType.CLOSED_SEARCH in action_space and ActionType.OPEN_WEB_SEARCH in action_space:
-        guidelines.append("")
-        guidelines.append("**Choosing between CLOSED_SEARCH and OPEN_WEB_SEARCH:**")
-        guidelines.append("- Use **CLOSED_SEARCH** to search the fixed set of indexed documents. If you get no results or poor results, the information may not exist in the index, or you may need to rephrase your query.")
-        guidelines.append("- Use **OPEN_WEB_SEARCH** to search the open internet via Google (web, news, and Google Scholar). Use this for current information, news, scholarly articles, or content that may not be in the closed document index.")
-    elif ActionType.CLOSED_SEARCH in action_space:
-        guidelines.append("")
-        guidelines.append("**About CLOSED_SEARCH:**")
-        guidelines.append("- CLOSED_SEARCH searches a fixed set of indexed documents (closed world). If you get no results or poor results, the information may not exist in the indexed documents, or your query may need to be rephrased with different terminology or more specific details.")
-    elif ActionType.OPEN_WEB_SEARCH in action_space:
+    if ActionType.OPEN_WEB_SEARCH in action_space:
         guidelines.append("")
         guidelines.append("**About OPEN_WEB_SEARCH:**")
         guidelines.append("- OPEN_WEB_SEARCH performs Google search on the open internet (web, news, and Google Scholar). Use this to find current information, news, scholarly articles, and web content.")

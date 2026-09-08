@@ -293,7 +293,6 @@ def create_agent(
         'temperature': model_config.get('temperature', 0.7),
         'seed': model_config.get('seed'),  # For reproducible LLM outputs
         'thinking_enabled': agent_config.get('thinking_enabled', True),
-        'closed_search_enabled': agent_config.get('closed_search_enabled', True),
         'open_web_search_enabled': agent_config.get('open_web_search_enabled', False),
         'courtlistener_search_enabled': agent_config.get('courtlistener_search_enabled', False),
         'courtlistener_opinion_access_enabled': agent_config.get('courtlistener_opinion_access_enabled', False),

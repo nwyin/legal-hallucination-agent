@@ -77,7 +77,6 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
         temperature: float = 0.7,
         seed: int = None,
         thinking_enabled: bool = True,
-        closed_search_enabled: bool = True,
         open_web_search_enabled: bool = False,
         courtlistener_search_enabled: bool = False,
         courtlistener_opinion_access_enabled: bool = False,
@@ -102,7 +101,6 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             temperature: Temperature for LLM generation
             seed: Seed for reproducible LLM outputs
             thinking_enabled: Whether to allow thinking actions
-            closed_search_enabled: Whether to allow closed search actions
             open_web_search_enabled: Whether to allow open web search actions
             courtlistener_search_enabled: Whether to allow CourtListener search actions
             courtlistener_opinion_access_enabled: Whether to allow CourtListener opinion fetch by ID
@@ -141,7 +139,6 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             temperature=temperature,
             seed=seed,
             thinking_enabled=thinking_enabled,
-            closed_search_enabled=closed_search_enabled,
             open_web_search_enabled=open_web_search_enabled,
             courtlistener_search_enabled=courtlistener_search_enabled,
             courtlistener_opinion_access_enabled=courtlistener_opinion_access_enabled,

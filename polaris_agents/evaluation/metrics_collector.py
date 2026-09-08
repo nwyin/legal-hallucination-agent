@@ -461,7 +461,7 @@ class MetricsCollector:
     def _extract_action_content(self, action) -> str:
         content_parts = []
         
-        # For CLOSED_SEARCH actions, show Search Type first, then Query
+        # Show Search Type first, then Query
         if hasattr(action, 'search_type') and action.search_type:
             content_parts.append(f"Search Type: {action.search_type}")
         if hasattr(action, 'query') and action.query:

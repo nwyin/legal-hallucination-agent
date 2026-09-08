@@ -29,7 +29,6 @@ class Agent:
                  temperature_action_selection: float = None,
                  seed: int = None,
                  thinking_enabled: bool = True,
-                 closed_search_enabled: bool = True,
                  open_web_search_enabled: bool = False,
                 courtlistener_search_enabled: bool = False,
                 courtlistener_opinion_access_enabled: bool = False,
@@ -46,7 +45,6 @@ class Agent:
             temperature_action_selection: Temperature for action selection (defaults to temperature if not set)
             seed: Seed for reproducible LLM outputs
             thinking_enabled: Whether to allow thinking actions
-            closed_search_enabled: Whether to allow closed search actions
             open_web_search_enabled: Whether to allow open web search actions
             courtlistener_search_enabled: Whether to allow CourtListener search actions
             courtlistener_opinion_access_enabled: Whether to allow CourtListener opinion fetch by ID
@@ -61,7 +59,6 @@ class Agent:
         self.temperature_action_selection = temperature_action_selection if temperature_action_selection is not None else temperature
         self.seed = seed
         self.thinking_enabled = thinking_enabled
-        self.closed_search_enabled = closed_search_enabled
         self.open_web_search_enabled = open_web_search_enabled
         self.courtlistener_search_enabled = courtlistener_search_enabled
         self.courtlistener_opinion_access_enabled = courtlistener_opinion_access_enabled
@@ -78,10 +75,6 @@ class Agent:
         if not self.thinking_enabled:
             if ActionType.THINK in self.action_space:
                 self.action_space.remove(ActionType.THINK)
-        
-        if not self.closed_search_enabled:
-            if ActionType.CLOSED_SEARCH in self.action_space:
-                self.action_space.remove(ActionType.CLOSED_SEARCH)
         
         if not self.open_web_search_enabled:
             if ActionType.OPEN_WEB_SEARCH in self.action_space:
@@ -116,11 +109,6 @@ class Agent:
         if self.thinking_enabled and ActionType.THINK not in env_action_space:
             errors.append(
                 f"thinking_enabled=True but environment doesn't support THINK"
-            )
-        
-        if self.closed_search_enabled and ActionType.CLOSED_SEARCH not in env_action_space:
-            errors.append(
-                f"closed_search_enabled=True but environment doesn't support CLOSED_SEARCH"
             )
         
         if self.open_web_search_enabled and ActionType.OPEN_WEB_SEARCH not in env_action_space:

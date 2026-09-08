@@ -95,7 +95,6 @@ How to verify legal citations and detect hallucinations:
 def get_search_capabilities_open_search() -> str:
     """
     Get search capabilities for hallucination checker (OPEN_WEB_SEARCH + CourtListener).
-    The hallucination checker uses open search, not CLOSED_SEARCH with indexes.
     """
     return """## Search Capabilities
 

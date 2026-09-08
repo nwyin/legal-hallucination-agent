@@ -6,7 +6,6 @@ from .internal.actions import ProvideFinalResponse, Think, PullArm
 from .courtlistener_search.actions import OpenCourtListenerSearch, AccessCourtListenerOpinion, CourtListenerCitationLookup, SearchLocalOpinion
 from .open_search.actions import OpenWebSearch
 from .filesystem.actions import ReadDocument, EditScratchpad
-from .closed_search.actions import ClosedSearch
 # TODO: Add other action types here
 # TODO: Consider adding execute method to Action class to execute the action instead of having separate execute functions, like in smol-agents.
 
@@ -23,7 +22,6 @@ __all__ = [
     "OpenWebSearch",
     "ReadDocument", 
     "EditScratchpad",
-    "ClosedSearch",
     "register_action_class",
     "get_action_class", 
     "get_all_action_classes"

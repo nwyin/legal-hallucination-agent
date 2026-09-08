@@ -4,7 +4,6 @@ The environment process actions
 
 """
 
-import glob
 import json
 import os
 import re
@@ -22,7 +21,6 @@ from ..prompts.environments.legal_hallucination_checker import (
     get_response_requirements,
     get_search_capabilities_open_search,
 )
-from ..models.llm import ModelAPI
 
 from ..agents.action.open_search.search import search as search_web
 from ..agents.action.courtlistener_search.main import (
@@ -64,18 +62,13 @@ class HallucinationCheckerEnvironment(Environment):
                  brief_text: str,
                  max_steps: int = 10, 
                  search_top_k: int = 3,
-                 opinion_cache_dir: Optional[str] = None,
-                 metadocuments_dir: str = None,
-                 device: str = None,
-                 metadata_filter_max_tokens: int = 10000):
+                 opinion_cache_dir: Optional[str] = None):
         """
         
         Args:
             brief_info: Dictionary containing brief information
             max_steps: Maximum number of steps allowed
             opinion_cache_dir: Directory to store full opinions (by opinion_id); default outputs/opinion_cache
-            metadocuments_dir: Path to directory containing metadocuments
-            device: Device to use for embedding model ('cpu' or 'cuda'). Defaults to 'cpu' to avoid Triton/flash-attention issues.
         """
         # Initialize with required base class parameters
         key = (
@@ -103,8 +96,6 @@ class HallucinationCheckerEnvironment(Environment):
         self.brief_info = brief_info
         self.brief_text = brief_text
         
-        self.device = device
-        # self._metadata_model_api = self._init_metadata_model_api()
         
         # Action space is already set by parent class
         
@@ -122,11 +113,6 @@ class HallucinationCheckerEnvironment(Environment):
         # Document manager: registers fetched opinions for READ_DOCUMENT and holds scratchpad for EDIT_SCRATCHPAD
         self.document_manager = DocumentManager()
         
-        # Cache for available field values to avoid repeated file scanning
-        self._field_values_cache = {}
-        
-        # Store metadata filter max_tokens
-        self.metadata_filter_max_tokens = metadata_filter_max_tokens
         self.initial_observation = Observation(
             result="Initial State.",
             metadata={
@@ -137,62 +123,6 @@ class HallucinationCheckerEnvironment(Environment):
         
         logger.debug(f"Initialized Legal Hallucination Checker environment (max_steps={self.max_steps})")
 
-    def _init_metadata_model_api(self) -> Optional[ModelAPI]:
-        if not hasattr(self, "search_config") or self.search_config is None:
-            return None
-        if self.search_config.get("disable_metadata_intent_llm", False):
-            return None
-        try:
-            return ModelAPI()
-        except Exception as exc:
-            logger.warning(f"Failed to initialize ModelAPI for metadata filters: {exc}")
-            return None
-
-    
-    def _get_available_field_values(self, field_name: str, search_type: str = "task_specific_documents") -> set[str]:
-        # Hallucination checker does not use task_specific_documents or metadocuments dirs
-        if not hasattr(self, "task_specific_documents_dir") and not hasattr(self, "metadocuments_dir"):
-            return set()
-        
-        cache_key = f"{field_name}_{search_type}"
-        if cache_key in self._field_values_cache:
-            return self._field_values_cache[cache_key]
-        
-        # Get directory based on search type (handle both agent-facing and internal names)
-        if search_type in ("task_specific_documents", "docket_file_documents"):
-            documents_dir = getattr(self, "task_specific_documents_dir", None)
-            dir_name = "task_specific_documents_dir"
-        elif search_type in ("metadocuments", "legal_research_documents"):
-            documents_dir = getattr(self, "metadocuments_dir", None)
-            dir_name = "metadocuments_dir"
-        else:
-            documents_dir = None
-            dir_name = "unknown"
-        
-        if documents_dir is None:
-            return set()
-        
-        if not os.path.exists(documents_dir):
-            return set()
-        
-        # Read unique field values from JSON files
-        field_values = set()
-        json_files = glob.glob(os.path.join(documents_dir, "**", "*.json"), recursive=True)
-        
-        for json_file in json_files:
-            try:
-                with open(json_file, 'r') as f:
-                    data = json.load(f)
-                    if field_name in data and data[field_name] is not None:
-                        field_values.add(str(data[field_name]).strip())
-            except (json.JSONDecodeError, IOError) as e:
-                logger.debug(f"Error reading {json_file}: {e}")
-                continue
-        
-        self._field_values_cache[cache_key] = field_values
-        logger.info(f"Cached {len(field_values)} unique values for field '{field_name}' in {search_type}")
-        return field_values
-    
     def step(self, action: Action) -> Observation:
         # Handle parsing failures by skipping the round
         if action is None:
