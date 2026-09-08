@@ -3,19 +3,27 @@ CourtListener API search implementation.
 
 This module provides functionality to search the CourtListener API for legal opinions,
 cases, dockets, and other legal documents using the unified search API.
+
+`Observation` is imported lazily inside the execute_* helpers: the environment
+imports this module, so a module-level import would cycle.
 """
 
-import os
-import logging
-import requests_cache
-import requests as requests_original
+from __future__ import annotations
 
+import logging
+import os
 import time
-from typing import Dict, Any, Optional, List
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode
+
 import backoff
-from datetime import timedelta, datetime
 import certifi
+import requests as requests_original
+import requests_cache
+
+from .actions import SEARCH_TYPES
+
 
 class NonRetryableError(Exception):
     """Exception for errors that should not be retried (e.g., malformed queries, auth issues)."""
@@ -26,9 +34,6 @@ requests = requests_cache.CachedSession(
     backend="sqlite",
     expire_after=timedelta(days=10),
 )
-
-from ....actions import SEARCH_TYPES
-from ....environments.base import Observation
 
 logger = logging.getLogger(__name__)
 
@@ -354,6 +359,8 @@ def execute_courtlistener_opinion_access(opinion_id: str) -> Observation:
     Returns:
         Observation containing the full opinion data
     """
+    from .environment import Observation
+
     if not opinion_id:
         raise ValueError("opinion_id is required for CourtListener opinion access")
 
@@ -426,6 +433,8 @@ def execute_courtlistener_citation_lookup(cite: str) -> Observation:
     Look up a reporter citation (e.g. '934 F.3d 53', '143 S. Ct. 1196') on CourtListener.
     Uses the citation-lookup API (POST). Returns Observation with citations list and full results.
     """
+    from .environment import Observation
+
     cite = (cite or "").strip()
     if not cite:
         return Observation(
@@ -516,6 +525,8 @@ def execute_courtlistener_search(query: str,
     Returns:
         Observation containing search results summary and full results for storage
     """
+    from .environment import Observation
+
     if not query:
         raise ValueError("Query parameter is required for CourtListener search")
     

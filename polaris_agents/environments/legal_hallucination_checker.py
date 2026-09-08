@@ -22,13 +22,13 @@ from ..prompts.environments.legal_hallucination_checker import (
     get_search_capabilities_open_search,
 )
 
-from ..agents.action.open_search.search import search as search_web
-from ..agents.action.courtlistener_search.main import (
+from ..web_search import search as search_web
+from ..courtlistener import (
     execute_courtlistener_search,
     execute_courtlistener_opinion_access,
     execute_courtlistener_citation_lookup,
 )
-from ..agents.action.filesystem.document_manager import (
+from ..documents import (
     DocumentManager,
     read_document_content as read_document_content_fn,
 )
