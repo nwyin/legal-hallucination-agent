@@ -2,33 +2,15 @@
 Base classes for prompt construction.
 
 This module defines:
-- EIGFormulation: Enum for different EIG objective formulations
 - DomainKnowledgeProvider: ABC for task-family specific θ/D definitions
 - Prompt constructor ABCs for belief update, action selection, and prediction
 """
 
 from abc import ABC, abstractmethod
-from enum import Enum
 from typing import Optional, List, Dict, Any
 
 from ..agents.action import ActionType
 from ..environments.base import Observation
-
-
-class EIGFormulation(Enum):
-    """
-    Different formulations for the Expected Information Gain objective.
-    
-    - JOINT: Maximize EIG(θ,D | action) - joint information gain about task and design
-    - ADDITIVE: EIG(θ | action) + EIG(D | action) - explicit decomposition
-    - IDS_RATIO: Minimize (ExpectedRegret)² / EIG(θ | action) - Information-Directed Sampling
-    
-    Reference: Russo & Van Roy (2017) "Learning to Optimize Via Information-Directed Sampling"
-    https://arxiv.org/pdf/1403.5556
-    """
-    JOINT = "joint"
-    ADDITIVE = "additive"
-    IDS_RATIO = "ids_ratio"
 
 
 class DomainKnowledgeProvider(ABC):

@@ -41,7 +41,6 @@ agent:
     action_selection: 4096  # For action selection calls
     belief_update: 10000   # For belief update calls
     prediction: 10000         # For get_current_prediction calls
-    eig_estimate: 4096      # For get_eig_estimate calls
   
   thinking_enabled: true
   open_web_search_enabled: true

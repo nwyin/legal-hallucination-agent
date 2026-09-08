@@ -100,7 +100,7 @@ def parse_json_response(response: str, response_name: str = "response") -> Dict[
     
     Args:
         response: Raw response string from LLM
-        response_name: Name of the response type for logging (e.g., "prediction", "EIG estimate")
+        response_name: Name of the response type for logging (e.g., "prediction")
         
     Returns:
         Parsed JSON data as dictionary
@@ -174,47 +174,6 @@ def parse_prediction_response(response: str) -> Tuple[str, float]:
     pred_preview = str(prediction)[:200] + "..." if len(str(prediction)) > 200 else str(prediction)
     logger.info(f"Parsed prediction: {pred_preview} (confidence: {confidence:.3f})")
     return prediction, confidence
-
-
-def parse_eig_response(response: str) -> Tuple[float, float, float, float, str]:
-    """
-    Parse an EIG response and return task_eig_bits, design_eig_bits, joint_eig_bits, confidence, reasoning.
-    
-    Args:
-        response: Raw response string from LLM
-        
-    Returns:
-        Tuple of (task_eig_bits, design_eig_bits, joint_eig_bits, confidence, reasoning)
-        
-    Raises:
-        ValueError: If response is empty or invalid JSON
-        KeyError: If required fields are missing
-    """
-    data = parse_json_response(response, "EIG estimate")
-    
-    # Support both old format (normalized) and new format (bits)
-    # Try new format first (bits)
-    if 'task_eig_bits' in data:
-        task_eig = float(data.get('task_eig_bits', 0.0))
-        design_eig = float(data.get('design_eig_bits', 0.0))
-        joint_eig = float(data.get('joint_eig_bits', 0.0))
-    else:
-        # Fallback to old format for backward compatibility
-        task_eig = float(data.get('task_eig', 0.0))
-        design_eig = float(data.get('design_eig', 0.0))
-        joint_eig = float(data.get('joint_eig', 0.0))
-    
-    confidence = float(data.get('confidence', 0.0))
-    reasoning = data.get('reasoning', '')
-    
-    # Validate ranges (bits should be non-negative, no upper bound)
-    task_eig = max(0.0, task_eig)
-    design_eig = max(0.0, design_eig)
-    joint_eig = max(0.0, joint_eig)
-    confidence = max(0.0, min(1.0, confidence))
-    
-    logger.info(f"Parsed EIG: Task={task_eig:.3f} bits, Design={design_eig:.3f} bits, Joint={joint_eig:.3f} bits, Confidence={confidence:.3f}")
-    return task_eig, design_eig, joint_eig, confidence, reasoning
 
 
 def extract_action_parameters(action: Any) -> Dict[str, Any]:

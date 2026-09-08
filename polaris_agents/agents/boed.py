@@ -27,10 +27,8 @@ from .utils import (
     extract_action_parameters, 
     parse_prediction_response, 
     normalize_yes_no_answers, 
-    parse_eig_response,
     parse_json_from_text,
 )
-from ..prompts.utils import build_eig_estimate_prompt
 
 from ..prompts.base import (
     BeliefUpdatePromptConstructor,
@@ -686,73 +684,6 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
         except Exception as e:
             logger.error(f"Error getting current prediction: {e}")
             return None, None
-    
-    def get_eig_estimate(self, action: Any) -> Tuple[float, float, float, float, str]:
-        """
-        Get the agent's current estimation of Expected Information Gain (EIG) for an action.
-        
-        This is an evaluation hook that estimates EIG regardless of how the agent selects actions.
-        The prompt is agent-agnostic and just defines EIG and estimation.
-        
-        Args:
-            action: The action to estimate EIG for
-            
-        Returns:
-            Tuple of (task_eig_bits, design_eig_bits, joint_eig_bits, confidence, reasoning)
-        """
-        try:
-            # Get environment description
-            env_description = ""
-            if hasattr(self.environment, 'get_environment_description'):
-                env_description = self.environment.get_environment_description()
-            elif hasattr(self.environment, 'get_task_instance_description'):
-                env_description = self.environment.get_task_instance_description()
-            
-            # Extract action info
-            action_type = action.action_type.value if hasattr(action, 'action_type') else str(type(action))
-            action_params = extract_action_parameters(action)
-            
-            # Get domain knowledge from prompt constructor if available
-            domain_knowledge = None
-            if (hasattr(self.action_selection_prompt_constructor, 'domain_knowledge') and 
-                self.action_selection_prompt_constructor.domain_knowledge is not None):
-                domain_knowledge = self.action_selection_prompt_constructor.domain_knowledge
-            
-            # Build EIG prompt using shared utility
-            prompt = build_eig_estimate_prompt(
-                env_description=env_description,
-                task_beliefs=self.task_beliefs,
-                action_space=self._get_available_action_types(),
-                action_type=action_type,
-                action_params=action_params,
-                design_beliefs=None,  # BOED doesn't have design beliefs
-                domain_knowledge=domain_knowledge,
-            )
-            
-            # Get EIG estimate from agent's model
-            eig_estimate_max_tokens = self.max_tokens_config.get('eig_estimate', self.max_tokens)
-            response = self.model_api(
-                model_id=self.model_id,
-                prompt=[{"role": "user", "content": prompt}],
-                max_attempts=3,
-                provider=self.provider,
-                max_tokens=eig_estimate_max_tokens,
-                temperature=0.3,
-                seed=self.seed
-            )
-            
-            # Parse EIG response
-            try:
-                task_eig, design_eig, joint_eig, confidence, reasoning = parse_eig_response(response)
-                logger.info(f"EIG estimate: Task={task_eig:.3f} bits, Design={design_eig:.3f} bits, Joint={joint_eig:.3f} bits, Confidence={confidence:.3f}")
-                return task_eig, design_eig, joint_eig, confidence, reasoning
-            except Exception as e:
-                logger.warning(f"Failed to parse EIG response: {e}")
-                return 0.0, 0.0, 0.0, 0.0, f"Parsing failed: {str(e)}"
-                
-        except Exception as e:
-            logger.error(f"Error getting EIG estimate: {e}")
-            return 0.0, 0.0, 0.0, 0.0, f"Error: {str(e)}"
     
     def reset(self):
         super().reset() if hasattr(super(), 'reset') else None

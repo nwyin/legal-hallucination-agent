@@ -277,7 +277,7 @@ def create_agent(
     # Extract agent max_tokens config (must be a dict)
     agent_max_tokens_config = agent_config.get('max_tokens', {})
     if not isinstance(agent_max_tokens_config, dict):
-        raise ValueError("agent.max_tokens must be a dictionary with keys: action_selection, belief_update, prediction, eig_estimate")
+        raise ValueError("agent.max_tokens must be a dictionary with keys: action_selection, belief_update, prediction")
     
     # Get default max_tokens from action_selection (used as fallback in agents)
     max_tokens_default = agent_max_tokens_config.get('action_selection', 16000)

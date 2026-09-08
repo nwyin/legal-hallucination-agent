@@ -3,7 +3,6 @@ Prompt module for LLM agent prompts.
 
 This module provides:
 - Base classes for prompt construction (DomainKnowledgeProvider, PromptConstructors)
-- EIG formulation definitions
 - Agent-specific prompt constructors (in agents/)
 - Environment-specific prompts and domain knowledge (in environments/)
 
@@ -13,13 +12,11 @@ Structure:
 """
 
 from .base import (
-    EIGFormulation,
     DomainKnowledgeProvider,
     BeliefUpdatePromptConstructor,
     ActionSelectionPromptConstructor,
     PredictionPromptConstructor,
 )
-from .eig_formulations import get_eig_objective_text
 from .utils import (
     format_action_history,
     format_observation_result,
@@ -41,13 +38,10 @@ from .agents import (
 
 __all__ = [
     # Base classes
-    "EIGFormulation",
     "DomainKnowledgeProvider",
     "BeliefUpdatePromptConstructor",
     "ActionSelectionPromptConstructor",
     "PredictionPromptConstructor",
-    # EIG
-    "get_eig_objective_text",
     # BOED prompt constructors (single beliefs)
     "BOEDBeliefUpdatePromptConstructor",
     "BOEDActionSelectionPromptConstructor",
