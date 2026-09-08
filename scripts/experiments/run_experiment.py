@@ -1,28 +1,14 @@
 #!/usr/bin/env python3
 """
-Generic Experiment Runner for Polaris Agents.
+Citation benchmark runner for the legal hallucination checker task.
 
-Runs any task (environment) with any agent method and collects metrics.
-Examples are loaded from a JSONL dataset file.
-
-Usage:
-    # Single example - specify example_id
-    python scripts/run_experiment.py data.example_id=23-477
-    
-    # Batch mode - run all examples
-    python scripts/run_experiment.py
-    
-    # Batch with limit
-    python scripts/run_experiment.py data.limit=5
-    
-    # Override method
-    python scripts/run_experiment.py data.example_id=23-477 method=boed
+Loads examples from a JSONL dataset, runs a citation-focused agent, and writes
+episode metrics.
 """
 
 import os
 import sys
 import logging
-import token
 import hydra
 from typing import Dict, Any, Type, List, Optional
 from omegaconf import DictConfig, OmegaConf
@@ -55,7 +41,6 @@ from polaris_agents.environments.base import Environment, Observation
 from polaris_agents.agents.base import Agent
 from polaris_agents.evaluation import (
     create_metrics_collector,
-    MetricsCollector
 )
 from dotenv import load_dotenv
 
@@ -66,11 +51,19 @@ os.environ.setdefault("OTEL_SDK_DISABLED", "true")
 
 logger = logging.getLogger(__name__)
 
-# =============================================================================
-# TASK REGISTRY
-# =============================================================================
+from polaris_agents.environments.legal_hallucination_checker import HallucinationCheckerEnvironment
+from polaris_agents.prompts.environments.legal_hallucination_checker import (
+    LegalHallucinationCheckerDomainKnowledge,
+)
 
-TASK_NAMES = ["scotus_judgment", "multi_armed_bandit", "legal_hallucination_checker"]
+TASK_NAME = "legal_hallucination_checker"
+TASK_ID_FIELD = "filename"
+TASK_BELIEF_PRIOR = (
+    "You are verifying citations in a legal brief for hallucinations. "
+    "θ = the set of citations and sentences that are hallucinated (fabricated, misquoted, or non-existent). "
+    "You begin with no knowledge of which citations are hallucinated."
+)
+TASK_DOMAIN_KNOWLEDGE = LegalHallucinationCheckerDomainKnowledge()
 
 
 def extract_hallucination_ground_truth(data: Dict[str, Any]) -> Any:
@@ -89,29 +82,6 @@ def extract_hallucination_ground_truth(data: Dict[str, Any]) -> Any:
             return data.get(key)
     return []
 
-
-def _load_task_config(task: str) -> Dict[str, Any]:
-    if task == "legal_hallucination_checker":
-        from polaris_agents.environments.legal_hallucination_checker import HallucinationCheckerEnvironment
-        from polaris_agents.prompts.environments.legal_hallucination_checker import LegalHallucinationCheckerDomainKnowledge
-        return {
-            "environment_class": HallucinationCheckerEnvironment,
-            "domain_knowledge": LegalHallucinationCheckerDomainKnowledge(),
-            "id_field": "filename",
-            "task_belief_prior": (
-                "You are verifying citations in a legal brief for hallucinations. "
-                "θ = the set of citations and sentences that are hallucinated (fabricated, misquoted, or non-existent). "
-                "You begin with no knowledge of which citations are hallucinated."
-            ),
-        }
-    else:
-        raise ValueError(f"Unknown task: {task}. Available: {TASK_NAMES}")
-
-
-def get_task_registry(task: str) -> Dict[str, Dict[str, Any]]:
-    if task not in TASK_NAMES:
-        raise ValueError(f"Unknown task: {task}. Available: {TASK_NAMES}")
-    return {task: _load_task_config(task)}
 
 # =============================================================================
 # AGENT REGISTRY
@@ -234,22 +204,6 @@ def get_example_by_id(examples: List[Dict[str, Any]], example_id: str, id_field:
             return example
     return None
 
-def _serialize_action_history(history: list) -> list:
-    if not history:
-        return []
-    result = []
-    for step in history:
-        action = step.get('action')
-        if action and hasattr(action, 'action_type') and hasattr(action, 'get_input_parameters'):
-            result.append({
-                "action_type": action.action_type.value,
-                "parameters": action.get_input_parameters(),
-            })
-        else:
-            result.append({"action_type": "unknown", "parameters": {}})
-    return result
-
-
 def get_completed_examples(metrics_dir: str, dataset: str, model_id: str, method: str) -> set:
     """Get set of already completed example IDs.
     
@@ -277,132 +231,17 @@ def clear_opinion_cache(opinion_cache_dir: str) -> None:
 
 
 # =============================================================================
-# PATH TEMPLATE SUBSTITUTION
-# =============================================================================
-
-def substitute_path_templates(paths_config: Dict[str, Any], example: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Substitute path templates with example-specific values.
-    
-    Supported placeholders:
-        {docket} - The case docket number
-        {year_prefix} - First two characters of docket (e.g., "23" from "23-477")
-        {base} - The base path
-    """
-    docket = example.get('docket', '')
-    year_prefix = docket.split('-')[0] if '-' in docket else docket[:2]
-    base = paths_config.get('base', '')
-    
-    def substitute(value: Any) -> Any:
-        if isinstance(value, str):
-            return value.format(
-                docket=docket,
-                year_prefix=year_prefix,
-                base=base
-            )
-        elif isinstance(value, dict):
-            return {k: substitute(v) for k, v in value.items()}
-        elif isinstance(value, list):
-            return [substitute(v) for v in value]
-        return value
-    
-    return substitute(paths_config)
-
-def build_environment_config(
-    example: Dict[str, Any],
-    paths_config: Dict[str, Any],
-    search_config: Dict[str, Any],
-    env_config: Dict[str, Any]
-) -> Dict[str, Any]:
-    """Build the full environment config for an example."""
-    # Substitute path templates
-    paths = substitute_path_templates(paths_config, example)
-    
-    # Build environment config
-    # Extract resolution date from resolution_entry_raw (first entry's date)
-    # This is the actual date the case was resolved, NOT freeze_date (which is just when data was collected)
-    resolution_date = ''
-    resolution_entry_raw = example.get('resolution_entry_raw', [])
-    if resolution_entry_raw and len(resolution_entry_raw) > 0:
-        resolution_date = resolution_entry_raw[0].get('date', '')
-    
-    if not resolution_date:
-        logger.warning(f"⚠️  No resolution_date found in resolution_entry_raw for case {example.get('docket', 'unknown')} - date filter will not be applied!")
-    
-    env = {
-        # From example (JSONL)
-        'case_docket': example.get('docket', ''),
-        'case_title': example.get('case_title', ''),
-        'resolution_date': resolution_date,
-        'legal_questions': example.get('legal_questions', []),
-        'legal_answers': example.get('legal_answers', []),
-        'facts_of_the_case': example.get('facts_of_the_case', '') or example.get('oyez_facts_of_the_case', ''),
-        
-        # From paths (substituted)
-        'indexes': paths.get('indexes', {}),
-        'task_specific_documents_dir': paths.get('task_specific_documents_dir', ''),
-        'metadocuments_dir': paths.get('metadocuments_dir', ''),
-        
-        # From search config
-        'search': search_config,
-        
-        # From env config
-        'max_steps': env_config.get('max_steps', 20),
-    }
-    
-    return env
-
-# =============================================================================
 # ENVIRONMENT FACTORY
 # =============================================================================
 
-def create_environment(task: str, env_config: Dict[str, Any]) -> Environment:
-    task_registry = get_task_registry(task)
-    task_info = task_registry[task]
-    env_class = task_info["environment_class"]
-    
-    if task == "scotus_judgment":
-        search_config = env_config.get('search', {})
-        if 'indexes' in env_config:
-            search_config['indexes'] = env_config['indexes']
-        
-        return env_class(
-            case_info=env_config,
-            max_steps=env_config.get('max_steps', 10),
-            search_config=search_config,
-            embedding_model_name=search_config.get('embedding_model', 'Qwen/Qwen3-Embedding-8B'),
-            device=search_config.get('embedding_device', 'cpu'),  # Get device from search config
-            task_specific_documents_dir=env_config.get('task_specific_documents_dir'),
-            metadocuments_dir=env_config.get('metadocuments_dir'),
-            metadata_filter_max_tokens=search_config.get('metadata_filter_max_tokens', 10000)
-        )
-    
-    elif task == "multi_armed_bandit":
-        return env_class(
-            n_bandits=env_config.get('n_bandits', 3),
-            thetas=env_config.get('thetas', [0.3, 0.5, 0.7]),
-            max_steps=env_config.get('max_steps', 10),
-            seed=env_config.get('seed'),
-            search_index_path=env_config.get('search_index_path'),
-            search_top_k=env_config.get('search_top_k', 3),
-            enable_think=env_config.get('enable_think', True),
-            enable_closed_search=env_config.get('enable_closed_search', False),  # Usually no search for bandits
-            enable_web_search=env_config.get('enable_web_search', False),
-        )
-    elif task == "legal_hallucination_checker":
-        return env_class(
-            brief_info=env_config.get('brief_info', {}),
-            brief_text=env_config.get('brief_text', ''),
-            max_steps=env_config.get('max_steps', 30),
-            search_top_k=env_config.get('search_top_k', 3),
-            opinion_cache_dir=env_config.get('opinion_cache_dir'),
-        )
-    else:
-        return env_class(
-            question=env_config.get('question', ''),
-            key=env_config.get('key', ''),
-            max_steps=env_config.get('max_steps', 10),
-        )
+def create_environment(env_config: Dict[str, Any]) -> Environment:
+    return HallucinationCheckerEnvironment(
+        brief_info=env_config.get('brief_info', {}),
+        brief_text=env_config.get('brief_text', ''),
+        max_steps=env_config.get('max_steps', 30),
+        search_top_k=env_config.get('search_top_k', 3),
+        opinion_cache_dir=env_config.get('opinion_cache_dir'),
+    )
 
 # =============================================================================
 # AGENT FACTORY
@@ -410,13 +249,12 @@ def create_environment(task: str, env_config: Dict[str, Any]) -> Environment:
 
 def create_agent(
     method: str,
-    task: str,
     environment: Environment,
     model_api: ModelAPI,
     model_config: Dict[str, Any],
     agent_config: Dict[str, Any]
 ) -> Agent:
-    """Create an agent based on method name and task."""
+    """Create an agent based on method name."""
     from polaris_agents.prompts.agents.boed import (
         BOEDBeliefUpdatePromptConstructor,
         BOEDActionSelectionPromptConstructor,
@@ -428,16 +266,13 @@ def create_agent(
     )
     
     agent_registry = get_agent_registry()
-    task_registry = get_task_registry(task)
     
     if method not in agent_registry:
         raise ValueError(f"Unknown method: {method}. Available: {list(agent_registry.keys())}")
     
     agent_class = agent_registry[method]
     
-    # Get task-specific domain knowledge (or None for generic)
-    # Set to None to use generic prompts, or provide a DomainKnowledgeProvider for task-specific prompts
-    domain_knowledge = task_registry.get(task, {}).get('domain_knowledge')
+    domain_knowledge = TASK_DOMAIN_KNOWLEDGE
     
     # Extract agent max_tokens config (must be a dict)
     agent_max_tokens_config = agent_config.get('max_tokens', {})
@@ -469,13 +304,11 @@ def create_agent(
     }
     
     # Add method-specific prompt constructors with domain knowledge
-    task_info = task_registry.get(task, {})
     if method == 'boed':
         common_params['belief_update_prompt_constructor'] = BOEDBeliefUpdatePromptConstructor(domain_knowledge)
         common_params['action_selection_prompt_constructor'] = BOEDActionSelectionPromptConstructor(domain_knowledge)
         common_params['prediction_prompt_constructor'] = BOEDPredictionPromptConstructor(domain_knowledge)
-        if 'task_belief_prior' in task_info:
-            common_params['task_belief_prior'] = task_info['task_belief_prior']
+        common_params['task_belief_prior'] = TASK_BELIEF_PRIOR
     elif method == 'boed_citation_tracker':
         common_params['belief_update_prompt_constructor'] = BOEDCitationTrackerBeliefUpdatePromptConstructor(domain_knowledge)
         common_params['action_selection_prompt_constructor'] = BOEDActionSelectionPromptConstructor(domain_knowledge)
@@ -492,7 +325,6 @@ def run_episode(
     agent: Agent,
     environment: Environment,
     metrics_collector,
-    task_name: str
 ) -> Dict[str, Any]:
     """Run a complete episode and collect metrics."""
     def _prediction_to_list(prediction: Any) -> Optional[List[str]]:
@@ -517,7 +349,7 @@ def run_episode(
     environment.reset()
     observation = environment.get_initial_observation()
     
-    log_initial_state(agent, environment, observation, task_name)
+    log_initial_state(agent, environment, observation, TASK_NAME)
     
     final_response = None
     is_correct = None
@@ -541,10 +373,9 @@ def run_episode(
             if is_valid:
                 break
             logger.warning(f"Direct prediction empty or invalid (attempt {attempt + 1}/{max_prediction_retries}), retrying...")
-        if task_name == "legal_hallucination_checker":
-            predicted_hallucinations = getattr(agent, "last_final_response_list", None)
-            if predicted_hallucinations is None:
-                predicted_hallucinations = _prediction_to_list(final_response)
+        predicted_hallucinations = getattr(agent, "last_final_response_list", None)
+        if predicted_hallucinations is None:
+            predicted_hallucinations = _prediction_to_list(final_response)
     else:
         max_action_parse_retries = 2
         max_final_response_retries = 2
@@ -574,8 +405,7 @@ def run_episode(
                     step_num,
                 )
                 break
-            if task_name == "legal_hallucination_checker":
-                time.sleep(random.uniform(1, 3))  # Polite delay to avoid rate limits
+            time.sleep(random.uniform(1, 3))  # Polite delay to avoid rate limits
             observation = environment.step(action)
             agent.update_state(action, observation)
             
@@ -584,30 +414,29 @@ def run_episode(
             # Action-specific logging
             if action_type == "PROVIDE_FINAL_RESPONSE":
                 final_response, is_correct, final_accuracy = log_final_response(action, observation)
-                if task_name == "legal_hallucination_checker":
-                    predicted_hallucinations = getattr(agent, "last_final_response_list", None)
-                    if not final_response and final_response_retry_count < max_final_response_retries:
-                        final_response_retry_count += 1
-                        logger.warning(
-                            "PROVIDE_FINAL_RESPONSE returned empty or unparseable list "
-                            "(attempt %s/%s). Prompting agent to retry.",
-                            final_response_retry_count,
-                            max_final_response_retries,
-                        )
-                        environment.terminated = False
-                        observation = Observation(
-                            result=(
-                                "Your response was empty or could not be parsed as a JSON list. "
-                                "Please provide your final answer as a valid JSON array of hallucinated strings, "
-                                'e.g. ["citation1", "citation2"]. If no hallucinations were found, return [].'
-                            ),
-                            metadata={"action_type": "PROVIDE_FINAL_RESPONSE", "error": "empty_or_unparseable"},
-                        )
-                        final_response = None
-                        predicted_hallucinations = None
+                predicted_hallucinations = getattr(agent, "last_final_response_list", None)
+                if not final_response and final_response_retry_count < max_final_response_retries:
+                    final_response_retry_count += 1
+                    logger.warning(
+                        "PROVIDE_FINAL_RESPONSE returned empty or unparseable list "
+                        "(attempt %s/%s). Prompting agent to retry.",
+                        final_response_retry_count,
+                        max_final_response_retries,
+                    )
+                    environment.terminated = False
+                    observation = Observation(
+                        result=(
+                            "Your response was empty or could not be parsed as a JSON list. "
+                            "Please provide your final answer as a valid JSON array of hallucinated strings, "
+                            'e.g. ["citation1", "citation2"]. If no hallucinations were found, return [].'
+                        ),
+                        metadata={"action_type": "PROVIDE_FINAL_RESPONSE", "error": "empty_or_unparseable"},
+                    )
+                    final_response = None
+                    predicted_hallucinations = None
             elif action_type == "THINK":
                 log_think_action(action)
-            elif action_type in ["CLOSED_SEARCH", "OPEN_WEB_SEARCH", "OPEN_COURTLISTENER_SEARCH"]:
+            elif action_type in ["OPEN_WEB_SEARCH", "OPEN_COURTLISTENER_SEARCH"]:
                 log_search_action(action, observation, action_type)
             elif action_type == "ACCESS_COURTLISTENER_OPINION":
                 opinion_id = getattr(action, "opinion_id", "")
@@ -652,24 +481,23 @@ def run_episode(
         if last_obs and last_obs.metadata:
             final_accuracy = last_obs.metadata.get('accuracy')
     
-    if predicted_hallucinations is None and task_name == "legal_hallucination_checker":
+    if predicted_hallucinations is None:
         predicted_hallucinations = getattr(agent, "last_final_response_list", None)
 
     # Hallucination checker: compute precision, recall, F1
     precision = recall = f1 = None
-    if task_name == "legal_hallucination_checker":
-        from polaris_agents.evaluation.hallucination_checker_evaluator import (
-            evaluate_entry,
-            compute_metrics,
-        )
-        ground_truth_list = environment.key if isinstance(environment.key, list) else []
-        gt_found, gt_total, correct_pred, pred_total = evaluate_entry(
-            ground_truth_list, predicted_hallucinations
-        )
-        metrics = compute_metrics(gt_found, gt_total, correct_pred, pred_total)
-        precision, recall, f1 = metrics["precision"], metrics["recall"], metrics["f1"]
-        if final_accuracy is None:
-            final_accuracy = f1  # Use F1 as accuracy for hallucination checker
+    from polaris_agents.evaluation.hallucination_checker_evaluator import (
+        evaluate_entry,
+        compute_metrics,
+    )
+    ground_truth_list = environment.key if isinstance(environment.key, list) else []
+    gt_found, gt_total, correct_pred, pred_total = evaluate_entry(
+        ground_truth_list, predicted_hallucinations
+    )
+    metrics = compute_metrics(gt_found, gt_total, correct_pred, pred_total)
+    precision, recall, f1 = metrics["precision"], metrics["recall"], metrics["f1"]
+    if final_accuracy is None:
+        final_accuracy = f1  # Use F1 as accuracy for hallucination checker
 
     summary = {
         'total_steps': agent.current_step,
@@ -691,22 +519,19 @@ def run_episode(
     }
     
     # Log completion; for hallucination checker include P/R/F1
-    if task_name == "legal_hallucination_checker" and precision is not None:
+    if precision is not None:
         logger.info(
             f"Episode completed - Steps: {agent.current_step}, "
             f"P={precision:.3f} R={recall:.3f} F1={f1:.3f}, Fully Correct: {is_correct}"
         )
-    else:
-        accuracy_str = f", Accuracy: {final_accuracy:.3f}" if final_accuracy is not None else ""
-        logger.info(f"Episode completed - Steps: {agent.current_step}, Accuracy: {final_accuracy if final_accuracy is not None else 'N/A'}{accuracy_str}, Fully Correct: {is_correct}")
     return summary
 
 # =============================================================================
 # RESULTS LOGGING
 # =============================================================================
 
-def log_results(summary: Dict[str, Any], task: str, method: str, example_id: str = None):
-    header = f"{task.upper()} - {method.upper()}"
+def log_results(summary: Dict[str, Any], method: str, example_id: str = None):
+    header = f"{TASK_NAME.upper()} - {method.upper()}"
     if example_id:
         header += f" - {example_id}"
     
@@ -720,17 +545,12 @@ def log_results(summary: Dict[str, Any], task: str, method: str, example_id: str
     
     if summary.get('final_response'):
         logger.info(f"\nPrediction: {summary['final_response']}")
-        if task == "legal_hallucination_checker":
-            p, r, f = summary.get('precision'), summary.get('recall'), summary.get('f1')
-            if p is not None and r is not None and f is not None:
-                logger.info(f"Precision: {p:.3f}  Recall: {r:.3f}  F1: {f:.3f}")
-            accuracy = summary.get('accuracy')
-            if accuracy is not None:
-                logger.info(f"Accuracy (F1): {accuracy:.3f}")
-        else:
-            accuracy = summary.get('accuracy')
-            if accuracy is not None:
-                logger.info(f"Accuracy: {accuracy:.3f} ({accuracy*100:.1f}% of questions correct)")
+        p, r, f = summary.get('precision'), summary.get('recall'), summary.get('f1')
+        if p is not None and r is not None and f is not None:
+            logger.info(f"Precision: {p:.3f}  Recall: {r:.3f}  F1: {f:.3f}")
+        accuracy = summary.get('accuracy')
+        if accuracy is not None:
+            logger.info(f"Accuracy (F1): {accuracy:.3f}")
         logger.info(f"Fully Correct: {summary.get('is_correct')}")
     
     # Log belief state if available
@@ -775,21 +595,17 @@ def log_results(summary: Dict[str, Any], task: str, method: str, example_id: str
                     
                     # Log prediction and metrics
                     logger.info(f"  Prediction: {prediction}")
-                    if task == "legal_hallucination_checker":
-                        p, r, f = summary.get('precision'), summary.get('recall'), summary.get('f1')
-                        if p is not None and r is not None and f is not None:
-                            logger.info(f"  Precision: {p:.3f}  Recall: {r:.3f}  F1: {f:.3f}")
-                        if accuracy_val is not None:
-                            logger.info(f"  Accuracy (F1): {accuracy_val:.3f}")
-                    else:
-                        accuracy_str = f"{accuracy_val:.3f}" if accuracy_val is not None else "N/A"
-                        logger.info(f"  Accuracy: {accuracy_str}")
+                    p, r, f = summary.get('precision'), summary.get('recall'), summary.get('f1')
+                    if p is not None and r is not None and f is not None:
+                        logger.info(f"  Precision: {p:.3f}  Recall: {r:.3f}  F1: {f:.3f}")
+                    if accuracy_val is not None:
+                        logger.info(f"  Accuracy (F1): {accuracy_val:.3f}")
                     logger.info(f"  Fully Correct: {is_correct_val}")
                     logger.info("")
                     continue
                 
-                # Special handling for CLOSED_SEARCH and OPEN_WEB_SEARCH to show detailed results
-                if action_type in ['CLOSED_SEARCH', 'OPEN_WEB_SEARCH']:
+                # Special handling for OPEN_WEB_SEARCH to show detailed results
+                if action_type == 'OPEN_WEB_SEARCH':
                     metadata = obs.metadata or {}
                     num_results = metadata.get('num_results', 0)
                     search_results = metadata.get('search_results', [])
@@ -850,7 +666,6 @@ def log_results(summary: Dict[str, Any], task: str, method: str, example_id: str
 # =============================================================================
 
 def run_single_example(
-    task: str,
     method: str,
     example: Dict[str, Any],
     paths_config: Dict[str, Any],
@@ -877,40 +692,33 @@ def run_single_example(
     if experiment_logs:
         setup_experiment_logging(dataset, method, model_id, example_id)
     
-    # Build environment config from example + templates
-    if task == "multi_armed_bandit":
-        env_config = example.copy()
-        env_config['max_steps'] = env_settings.get('max_steps', example.get('max_steps', 10))
-    elif task == "legal_hallucination_checker":
-        opinion_cache_base = paths_config.get('opinion_cache_dir') or os.path.join(output_dir, 'opinion_cache')
-        _model_id = model_config.get('model_id', 'unknown')
-        _max_steps = env_settings.get('max_steps', 30)
-        _method_with_steps = f"{method}_steps{_max_steps}"
-        safe_example_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(example_id))
-        opinion_cache = os.path.join(opinion_cache_base, _model_id, _method_with_steps, safe_example_id)
-        gt = extract_hallucination_ground_truth(example)
-        env_config = {
-            'brief_info': {
-                'list_hallucinations': gt,
-                'list_hallucination_types': example.get('list_hallucination_types', []),
-            },
-            'brief_text': example.get('text', ''),
-            'max_steps': env_settings.get('max_steps', 30),
-            'search_top_k': search_config.get('top_k', 3),
-            'opinion_cache_dir': opinion_cache,
-        }
-        agent_config = dict(agent_config)
-        agent_config['brief_name'] = example.get('filename', example_id)
-    else:
-        env_config = build_environment_config(example, paths_config, search_config, env_settings)
+    # Build environment config from example
+    opinion_cache_base = paths_config.get('opinion_cache_dir') or os.path.join(output_dir, 'opinion_cache')
+    _model_id = model_config.get('model_id', 'unknown')
+    _max_steps = env_settings.get('max_steps', 30)
+    _method_with_steps = f"{method}_steps{_max_steps}"
+    safe_example_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(example_id))
+    opinion_cache = os.path.join(opinion_cache_base, _model_id, _method_with_steps, safe_example_id)
+    gt = extract_hallucination_ground_truth(example)
+    env_config = {
+        'brief_info': {
+            'list_hallucinations': gt,
+            'list_hallucination_types': example.get('list_hallucination_types', []),
+        },
+        'brief_text': example.get('text', ''),
+        'max_steps': env_settings.get('max_steps', 30),
+        'search_top_k': search_config.get('top_k', 3),
+        'opinion_cache_dir': opinion_cache,
+    }
+    agent_config = dict(agent_config)
+    agent_config['brief_name'] = example.get('filename', example_id)
     
     # Create environment
-    environment = create_environment(task, env_config)
+    environment = create_environment(env_config)
     
     # Create agent
     agent = create_agent(
         method=method,
-        task=task,
         environment=environment,
         model_api=model_api,
         model_config=model_config,
@@ -918,15 +726,13 @@ def run_single_example(
     )
     
     # Create metrics collector
-    has_beliefs = method in ['ids_oed', 'boed', 'boed_citation_tracker']
+    has_beliefs = method in ['boed', 'boed_citation_tracker']
     model_id = model_config.get('model_id', 'unknown')
 
     # Metrics go to: metrics/{dataset}/{model_id}/{method}_steps{max_steps}/
     max_steps = env_config.get('max_steps')
     method_with_steps = f"{method}_steps{max_steps}" if max_steps is not None else method
     example_metrics_dir = os.path.join(metrics_dir, dataset, model_id, method_with_steps)
-    
-    task_registry = get_task_registry(task)
     
     # Check evaluation settings - 'enabled' is master switch for all evaluation
     eval_enabled = eval_settings.get('enabled', True)
@@ -947,13 +753,13 @@ def run_single_example(
         enable_task_performance_tracking=eval_enabled,
         enable_eig_estimation=enable_eig,
         enable_belief_evolution_tracking=has_beliefs and enable_belief_evolution,
-        domain_knowledge=task_registry.get(task, {}).get('domain_knowledge')
+        domain_knowledge=TASK_DOMAIN_KNOWLEDGE
     )
     
     # Start metrics collection
     metrics_collector.start_episode(
         episode_id=example_id,
-        task_name=task,
+        task_name=TASK_NAME,
         agent_type=agent.__class__.__name__,
         environment_info=getattr(environment, 'get_case_info', lambda: {})(),
         method=method,
@@ -961,28 +767,23 @@ def run_single_example(
     )
     
     # Set ground truth (pass environment for consistent is_correct() evaluation)
-    if task == "legal_hallucination_checker":
-        ground_truth = env_config.get('list_hallucinations') or env_config.get('brief_info', {}).get('list_hallucinations')
-    else:
-        ground_truth = env_config.get('legal_answers')
+    ground_truth = env_config.get('list_hallucinations') or env_config.get('brief_info', {}).get('list_hallucinations')
     if ground_truth is not None:
         metrics_collector.set_task_performance_ground_truth(ground_truth, environment)
     
     # Run episode
-    summary = run_episode(agent, environment, metrics_collector, task)
+    summary = run_episode(agent, environment, metrics_collector)
     
     # Evaluate final prediction once (no per-step prediction evaluation)
     metrics_collector.record_final_prediction(agent, environment)
     
-    # End metrics collection; for legal_hallucination_checker, embed ground truth + prediction + raw response for evaluation
-    extra_data = None
-    if task == "legal_hallucination_checker":
-        extra_data = {
-            "list_hallucinations": ground_truth or [],
-            "predicted_hallucinations": summary.get("predicted_hallucinations"),
-            "final_response_raw": summary.get("final_response"),  # actual agent response string before parsing
-        }
-    if task == "legal_hallucination_checker" and extra_data.get("final_response_raw") is None:
+    # End metrics collection; include ground truth + prediction + raw response for evaluation
+    extra_data = {
+        "list_hallucinations": ground_truth or [],
+        "predicted_hallucinations": summary.get("predicted_hallucinations"),
+        "final_response_raw": summary.get("final_response"),  # actual agent response string before parsing
+    }
+    if extra_data.get("final_response_raw") is None:
         metrics_filepath = None
     else:
         metrics_filepath = metrics_collector.end_episode(extra_data=extra_data)
@@ -991,7 +792,7 @@ def run_single_example(
     summary['example_id'] = example_id
     
     # Log results
-    log_results(summary, task, method, example_id)
+    log_results(summary, method, example_id)
 
     return summary
 
@@ -999,28 +800,31 @@ def run_single_example(
 # MAIN
 # =============================================================================
 
-@hydra.main(version_base=None, config_path="../../configs", config_name="scotus_judgment")
+@hydra.main(version_base=None, config_path="../../configs", config_name="legal_hallucination_checker_gpt")
 def main(cfg: DictConfig):
     """
     Main entry point for running experiments.
     
     Config should specify:
-        - task: Task name
         - method: Agent method
         - data.dataset_path: Path to JSONL dataset
         - data.example_id: (Optional) Specific example to run
-        - paths: Path templates
         - model/agent/search: Settings
     """
     log_config = OmegaConf.to_container(cfg.get('logging', {}), resolve=True)
     setup_logging(log_config)
     setup_api_keys()
     
-    task = cfg.get('task', 'legal_hallucination_checker')
     method = cfg.get('method', 'boed_citation_tracker')
-    # Dataset names the result folder (metrics/plots/output); defaults to task for backward compatibility
-    dataset = cfg.get('dataset') or task
-    logger.info(f"Starting experiment: task={task}, method={method}, dataset={dataset}")
+    requested_task = cfg.get('task')
+    if requested_task is not None and requested_task != TASK_NAME:
+        raise ValueError(
+            f"Unsupported task '{requested_task}'. This runner only supports '{TASK_NAME}'. "
+            "Set task to 'legal_hallucination_checker' or omit task in the config."
+        )
+    # Dataset names the result folder (metrics/plots/output); defaults to TASK_NAME for consistency
+    dataset = cfg.get('dataset') or TASK_NAME
+    logger.info(f"Starting experiment: task={TASK_NAME}, method={method}, dataset={dataset}")
     
     # Convert configs to dicts (some sections are optional)
     data_config = OmegaConf.to_container(cfg.data, resolve=True)
@@ -1049,27 +853,9 @@ def main(cfg: DictConfig):
         metrics_dir = os.path.join(metrics_dir, 'test')
         output_dir = os.path.join(output_dir, 'test')
     
-    # Load examples from dataset (or create synthetic example for config-based tasks)
+    # Load examples from dataset
     dataset_path = data_config.get('dataset_path')
-    
-    # Some tasks (like multi_armed_bandit) don't need a JSONL dataset
-    # They get their config directly from the config file
-    if task == "multi_armed_bandit":
-        # Create a synthetic example from config
-        example_id = data_config.get('example_id', 'bandit_run')
-        examples = [{
-            'id': example_id,
-            'n_bandits': env_settings.get('n_bandits', 5),
-            'thetas': env_settings.get('thetas', [0.1, 0.2, 0.3, 0.4, 0.5]),
-            'max_steps': env_settings.get('max_steps', 10),
-            'seed': env_settings.get('seed'),
-            'search_index_path': env_settings.get('search_index_path'),
-            'enable_think': env_settings.get('enable_think', True),
-            'enable_closed_search': env_settings.get('enable_closed_search', False),
-            'enable_web_search': env_settings.get('enable_web_search', False),
-        }]
-        logger.info(f"Multi-armed bandit config: n_bandits={examples[0]['n_bandits']}, thetas={examples[0]['thetas']}")
-    elif not dataset_path or not os.path.exists(dataset_path):
+    if not dataset_path or not os.path.exists(dataset_path):
         logger.error(f"Dataset not found: {dataset_path}")
         return
     else:
@@ -1078,8 +864,7 @@ def main(cfg: DictConfig):
         logger.info(f"Loaded {len(examples)} examples")
     
     # Get ID field for this task
-    task_registry = get_task_registry(task)
-    id_field = data_config.get('id_field') or task_registry.get(task, {}).get('id_field', 'id')
+    id_field = data_config.get('id_field') or TASK_ID_FIELD
     
     # Filter to specific example if requested
     example_id = data_config.get('example_id')
@@ -1129,12 +914,11 @@ def main(cfg: DictConfig):
     # Run examples
     results = []
 
-    for example in tqdm(examples, desc=f"Running {task}/{method}"):
+    for example in tqdm(examples, desc=f"Running {TASK_NAME}/{method}"):
         ex_id = str(example.get(id_field, f"example_{len(results)}"))
 
         try:
             summary = run_single_example(
-                task=task,
                 method=method,
                 example=example,
                 paths_config=paths_config,
@@ -1165,40 +949,32 @@ def main(cfg: DictConfig):
         finally:
             # Clear this episode's opinion cache after each data point to avoid accumulating disk/memory use.
             # Each episode uses its own subdirectory so parallel agents don't clear each other's cached opinions.
-            if task == "legal_hallucination_checker":
-                opinion_cache_dir = paths_config.get('opinion_cache_dir') or os.path.join(output_dir, 'opinion_cache')
-                _model_id = model_config.get('model_id', 'unknown')
-                _max_steps = env_settings.get('max_steps', 30)
-                _method_with_steps = f"{method}_steps{_max_steps}"
-                safe_example_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(ex_id))
-                clear_opinion_cache(os.path.join(opinion_cache_dir, _model_id, _method_with_steps, safe_example_id))
+            opinion_cache_dir = paths_config.get('opinion_cache_dir') or os.path.join(output_dir, 'opinion_cache')
+            _model_id = model_config.get('model_id', 'unknown')
+            _max_steps = env_settings.get('max_steps', 30)
+            _method_with_steps = f"{method}_steps{_max_steps}"
+            safe_example_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(ex_id))
+            clear_opinion_cache(os.path.join(opinion_cache_dir, _model_id, _method_with_steps, safe_example_id))
     
     # Log batch summary
     if len(results) > 1:
-        if task == "legal_hallucination_checker":
-            from polaris_agents.evaluation.hallucination_checker_evaluator import aggregate_metrics, evaluate_hallucination_entry
-            entries = [
-                {"list_hallucinations": r.get("true_answer") or [], "predicted_hallucinations": r.get("predicted_hallucinations")}
-                for r in results
-            ]
-            per_entry = [evaluate_hallucination_entry(e) for e in entries]
-            agg = aggregate_metrics(per_entry)
-            logger.info(f"\n{'='*60}")
-            logger.info(
-                f"BATCH COMPLETE (legal_hallucination_checker): "
-                f"P={agg['precision']:.4f} R={agg['recall']:.4f} F1={agg['f1']:.4f}"
-            )
-            logger.info(
-                f"  ({agg['correct_predictions']:.0f}/{agg['total_predictions']:.0f} pred matched, "
-                f"{agg['ground_truth_found']:.0f}/{agg['total_ground_truth']:.0f} GT found)"
-            )
-            logger.info(f"{'='*60}")
-        else:
-            correct = sum(1 for r in results if r.get('is_correct') == True)
-            total = sum(1 for r in results if r.get('is_correct') is not None)
-            logger.info(f"\n{'='*60}")
-            logger.info(f"BATCH COMPLETE: {correct}/{total} correct ({100*correct/total:.1f}%)" if total > 0 else "BATCH COMPLETE: No predictions made")
-            logger.info(f"{'='*60}")
+        from polaris_agents.evaluation.hallucination_checker_evaluator import aggregate_metrics, evaluate_hallucination_entry
+        entries = [
+            {"list_hallucinations": r.get("true_answer") or [], "predicted_hallucinations": r.get("predicted_hallucinations")}
+            for r in results
+        ]
+        batch_entry_metrics = [evaluate_hallucination_entry(e) for e in entries]
+        agg = aggregate_metrics(batch_entry_metrics)
+        logger.info(f"\n{'='*60}")
+        logger.info(
+            f"BATCH COMPLETE ({TASK_NAME}): "
+            f"P={agg['precision']:.4f} R={agg['recall']:.4f} F1={agg['f1']:.4f}"
+        )
+        logger.info(
+            f"  ({agg['correct_predictions']:.0f}/{agg['total_predictions']:.0f} pred matched, "
+            f"{agg['ground_truth_found']:.0f}/{agg['total_ground_truth']:.0f} GT found)"
+        )
+        logger.info(f"{'='*60}")
         
         # Save batch results
         batch_results_path = os.path.join(output_dir, dataset, method, "batch_results.json")
@@ -1208,13 +984,7 @@ def main(cfg: DictConfig):
             sr = {k: v for k, v in r.items() if k != 'history'}
             serializable_results.append(sr)
         batch_data = {"results": serializable_results}
-        if task == "legal_hallucination_checker" and len(results) > 1:
-            from polaris_agents.evaluation.hallucination_checker_evaluator import aggregate_metrics, evaluate_hallucination_entry
-            entries = [
-                {"list_hallucinations": r.get("true_answer") or [], "predicted_hallucinations": r.get("predicted_hallucinations")}
-                for r in results
-            ]
-            agg = aggregate_metrics([evaluate_hallucination_entry(e) for e in entries])
+        if len(results) > 1:
             batch_data["aggregate_metrics"] = agg
         with open(batch_results_path, 'w') as f:
             json.dump(batch_data, f, indent=2, default=str)
