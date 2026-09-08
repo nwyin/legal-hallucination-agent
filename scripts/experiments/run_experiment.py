@@ -38,7 +38,7 @@ from episode_logging import (
 
 from polaris_agents.llm import ModelAPI
 from polaris_agents.environment import Environment, Observation
-from polaris_agents.agents.base import Agent
+from polaris_agents.agent import Agent
 from polaris_agents.evaluation import (
     create_metrics_collector,
 )
@@ -88,8 +88,8 @@ def extract_hallucination_ground_truth(data: Dict[str, Any]) -> Any:
 # =============================================================================
 
 def get_agent_registry() -> Dict[str, Type[Agent]]:
-    from polaris_agents.agents.boed import BayesianOptimalExperimentalDesignAgent
-    from polaris_agents.agents.boed_citation_tracker import BOEDCitationTrackerAgent
+    from polaris_agents.agent import BayesianOptimalExperimentalDesignAgent
+    from polaris_agents.agent import BOEDCitationTrackerAgent
 
     return {
         "boed": BayesianOptimalExperimentalDesignAgent,

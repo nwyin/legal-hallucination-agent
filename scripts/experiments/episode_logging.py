@@ -12,7 +12,7 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from polaris_agents.agents.base import Agent
+    from polaris_agents.agent import Agent
     from polaris_agents.environment import Environment
 
 logger = logging.getLogger(__name__)
