@@ -25,7 +25,11 @@ sys.path.insert(0, _project_root)
 # Add scripts directory to path for episode_logging import
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from episode_logging import (
+from polaris_agents.llm import ModelAPI
+from polaris_agents.environment import Environment, Observation
+from polaris_agents.agent import Agent
+from polaris_agents.recording import (
+    create_metrics_collector,
     log_initial_state,
     log_step_header,
     log_action_basic,
@@ -34,13 +38,6 @@ from episode_logging import (
     log_search_action,
     log_generic_observation,
     log_beliefs,
-)
-
-from polaris_agents.llm import ModelAPI
-from polaris_agents.environment import Environment, Observation
-from polaris_agents.agent import Agent
-from polaris_agents.evaluation import (
-    create_metrics_collector,
 )
 from dotenv import load_dotenv
 
@@ -482,7 +479,7 @@ def run_episode(
 
     # Hallucination checker: compute precision, recall, F1
     precision = recall = f1 = None
-    from polaris_agents.evaluation.hallucination_checker_evaluator import (
+    from polaris_agents.evaluation import (
         evaluate_entry,
         compute_metrics,
     )
@@ -930,7 +927,7 @@ def main(cfg: DictConfig):
     
     # Log batch summary
     if len(results) > 1:
-        from polaris_agents.evaluation.hallucination_checker_evaluator import aggregate_metrics, evaluate_hallucination_entry
+        from polaris_agents.evaluation import aggregate_metrics, evaluate_hallucination_entry
         entries = [
             {"list_hallucinations": r.get("true_answer") or [], "predicted_hallucinations": r.get("predicted_hallucinations")}
             for r in results
