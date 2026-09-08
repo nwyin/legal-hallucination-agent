@@ -44,9 +44,9 @@ def main():
             network_patch.start()
         try:
             import httpx
-            from polaris_agents import run, llm
-            from polaris_agents.actions import ActionType
-            from polaris_agents.tracing import langfuse, flush_traces, enabled, observe
+            from benchmark_agent import run, llm
+            from benchmark_agent.actions import ActionType
+            from benchmark_agent.tracing import langfuse, flush_traces, enabled, observe
             assert enabled, "Langfuse credentials are required for --export"
             base = ROOT / "reference_data/openrouter_baseline"
             config = json.loads((base / "config.json").read_text())

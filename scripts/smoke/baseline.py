@@ -15,10 +15,10 @@ sys.path.insert(0, str(ROOT))
 os.environ["OTEL_SDK_DISABLED"] = "true"
 from dotenv import load_dotenv
 load_dotenv(ROOT / ".env")
-from polaris_agents import run as runner
-from polaris_agents.actions import ActionType
-from polaris_agents import llm as llm_module
-from polaris_agents.evaluation import evaluate_entry, compute_metrics
+from benchmark_agent import run as runner
+from benchmark_agent.actions import ActionType
+from benchmark_agent import llm as llm_module
+from benchmark_agent.evaluation import evaluate_entry, compute_metrics
 
 
 def write(path, value):
@@ -71,7 +71,7 @@ def main():
     if recording:
         write(base / "config.json", config)
         write(base / "input.json", example)
-        sources = list((ROOT / "polaris_agents").rglob("*.py")) + list((ROOT / "scripts").rglob("*.py"))
+        sources = list((ROOT / "benchmark_agent").rglob("*.py")) + list((ROOT / "scripts").rglob("*.py"))
         sources += [ROOT / "pyproject.toml", ROOT / "uv.lock"]
         write(base / "manifest.json", {
             "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),

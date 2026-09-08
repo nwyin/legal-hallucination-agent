@@ -54,7 +54,7 @@ OpenAI SDK generations with model, token usage, latency, and provider errors.
 Dataset, example, method, and final precision/recall/F1 appear as metadata.
 Results include `langfuse_trace_id` for correlation. The CLI flushes pending
 observations in `finally`; callers embedding `run_single_example` should call
-`polaris_agents.tracing.flush_traces()` before exiting.
+`benchmark_agent.tracing.flush_traces()` before exiting.
 
 Brief text, model prompts/responses, and tool content are captured by default.
 Configured environment credentials are masked in exported span attributes;
@@ -81,18 +81,18 @@ uv run --locked python scripts/smoke/tracing.py --export
 
 ## Running Experiments
 
-The entry point is `python -m polaris_agents.run`, configured via YAML files in `configs/`.
+The entry point is `python -m benchmark_agent.run`, configured via YAML files in `configs/`.
 
 ```bash
 # Run on all examples in a dataset
-uv run --locked python -m polaris_agents.run --config-name=legal_hallucination_checker_gpt
+uv run --locked python -m benchmark_agent.run --config-name=legal_hallucination_checker_gpt
 
 # Run a single example by filename
-uv run --locked python -m polaris_agents.run --config-name=legal_hallucination_checker_gpt \
+uv run --locked python -m benchmark_agent.run --config-name=legal_hallucination_checker_gpt \
   data.example_id=caryn-strickland-v-united-states_191787292.pdf
 
 # Limit batch size
-uv run --locked python -m polaris_agents.run --config-name=legal_hallucination_checker_gpt \
+uv run --locked python -m benchmark_agent.run --config-name=legal_hallucination_checker_gpt \
   data.limit=5
 ```
 

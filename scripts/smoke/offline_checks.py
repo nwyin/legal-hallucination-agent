@@ -26,9 +26,9 @@ def _no_network(*args, **kwargs):
 socket.socket.connect = _no_network
 socket.create_connection = _no_network
 
-from polaris_agents import actions, courtlistener, documents, environment, evaluation, parsing, web_search
-from polaris_agents.actions import Action, ActionType, get_action_class, get_all_action_classes
-from polaris_agents.environment import HallucinationCheckerEnvironment, Observation
+from benchmark_agent import actions, courtlistener, documents, environment, evaluation, parsing, web_search
+from benchmark_agent.actions import Action, ActionType, get_action_class, get_all_action_classes
+from benchmark_agent.environment import HallucinationCheckerEnvironment, Observation
 
 CHECKS = []
 
