@@ -10,6 +10,7 @@ import time
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
+import requests
 from dateutil import parser as dateutil_parser
 from dateutil.tz import tzutc
 from dotenv import load_dotenv

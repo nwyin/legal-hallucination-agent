@@ -12,6 +12,7 @@ import socket
 import sys
 import tempfile
 from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -208,17 +209,38 @@ def date_parsing_and_cutoff_filtering():
 
 
 @check
+def search_clients_make_http_requests():
+    """Exercise both real client request methods with only HTTP mocked."""
+    for client_class in (web_search.SerpApiClient, web_search.MediaStackClient):
+        client = client_class(api_key="offline-placeholder", max_retries=0)
+        payload = {"results": [{"title": "offline result"}]}
+        response = SimpleNamespace(raise_for_status=lambda: None, json=lambda: payload)
+        with patch("requests.get", return_value=response) as get:
+            result = client._make_request_with_retry(
+                "https://example.invalid/search", {"q": "test query"}
+            )
+        get.assert_called_once_with("https://example.invalid/search", params={"q": "test query"})
+        assert result == payload
+
+
+@check
 def action_parsing_round_trip():
     """Model output parses into the action parameters the environment expects."""
     parsed = parsing.parse_action_output_with_fallback(
-        '```json\n{"action": {"action_type": "OPEN_WEB_SEARCH", "query": "fake v case"}}\n```'
+        '```json\n{"action": {"action_type": "OPEN_WEB_SEARCH", "query": "  fake v case  "}}\n```'
     )
     assert parsed["action_type"] == "OPEN_WEB_SEARCH", parsed
-    assert parsed["parameters"] == {"query": "fake v case"}, parsed
+    assert parsed["parameters"] == {"query": "  fake v case  "}, parsed
     action_class = get_action_class(ActionType(parsed["action_type"]))
     action = action_class(**parsing.normalize_action_parameters_for_construction(
-        action_class, parsed["parameters"]))
+        parsed["action_type"], parsed["parameters"]))
     assert action.query == "fake v case"
+    try:
+        parsing.normalize_action_parameters_for_construction(parsed["action_type"], {"query": "   "})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Empty search query must be rejected")
 
 
 @check
