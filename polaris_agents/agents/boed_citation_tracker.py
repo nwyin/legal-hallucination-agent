@@ -11,7 +11,7 @@ import logging
 from typing import Optional, Dict, Any
 
 from ..environments.base import Environment, Observation
-from ..models.llm import ModelAPI
+from ..llm import ModelAPI
 from ..prompts.base import (
     BeliefUpdatePromptConstructor,
     ActionSelectionPromptConstructor,

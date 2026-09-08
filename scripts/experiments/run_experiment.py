@@ -36,7 +36,7 @@ from episode_logging import (
     log_beliefs,
 )
 
-from polaris_agents.models.llm import ModelAPI
+from polaris_agents.llm import ModelAPI
 from polaris_agents.environments.base import Environment, Observation
 from polaris_agents.agents.base import Agent
 from polaris_agents.evaluation import (

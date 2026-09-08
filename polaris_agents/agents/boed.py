@@ -16,7 +16,7 @@ from typing import Optional, List, Dict, Tuple, Any
 
 from .action import Action, ActionType, get_action_class
 from ..environments.base import Environment, Observation
-from ..models.llm import ModelAPI
+from ..llm import ModelAPI
 from .base import Agent
 from .parser import (
     parse_action_output_with_fallback,

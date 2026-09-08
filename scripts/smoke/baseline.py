@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 load_dotenv(ROOT / ".env")
 import run_experiment as runner
 from polaris_agents.agents.action import ActionType
-from polaris_agents.models import openrouter_llm
+from polaris_agents import llm as llm_module
 from polaris_agents.evaluation.hallucination_checker_evaluator import evaluate_entry, compute_metrics
 
 
@@ -98,7 +98,7 @@ def main():
         env.step = step
         return env
     runner.create_environment = create_environment
-    original_client = openrouter_llm.get_client
+    original_client = llm_module.get_client
     if not recording:
         def no_network(*args, **kwargs):
             raise RuntimeError("Network access forbidden during replay")
@@ -125,7 +125,7 @@ def main():
                 content = tape[index]["response"]["choices"][0]["message"]["content"]
             index += 1
             return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
-        openrouter_llm.get_client = lambda: SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=completion)))
+        llm_module.get_client = lambda: SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=completion)))
         summary = runner.run_single_example(
             method=config["method"], example=example, paths_config={}, search_config=config["search"],
             env_settings={"max_steps": budget}, model_config=config["model"], agent_config=config["agent"],

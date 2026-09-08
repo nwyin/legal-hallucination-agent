@@ -13,7 +13,7 @@ __email__ = "your-email@example.com"
 from .agents.boed import BayesianOptimalExperimentalDesignAgent
 from .agents.boed_citation_tracker import BOEDCitationTrackerAgent
 from .agents.action import Action, ActionType
-from .models.llm import ModelAPI
+from .llm import ModelAPI
 from .environments.base import Environment, Observation
 
 # Import CourtListener search functionality
