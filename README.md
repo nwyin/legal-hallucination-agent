@@ -36,18 +36,18 @@ Set the required key(s) as environment variables, especially:
 
 ## Running Experiments
 
-The entry point is `scripts/experiments/run_experiment.py`, configured via YAML files in `configs/`.
+The entry point is `python -m polaris_agents.run`, configured via YAML files in `configs/`.
 
 ```bash
 # Run on all examples in a dataset
-uv run --locked python scripts/experiments/run_experiment.py --config-name=legal_hallucination_checker_gpt
+uv run --locked python -m polaris_agents.run --config-name=legal_hallucination_checker_gpt
 
 # Run a single example by filename
-uv run --locked python scripts/experiments/run_experiment.py --config-name=legal_hallucination_checker_gpt \
+uv run --locked python -m polaris_agents.run --config-name=legal_hallucination_checker_gpt \
   data.example_id=caryn-strickland-v-united-states_191787292.pdf
 
 # Limit batch size
-uv run --locked python scripts/experiments/run_experiment.py --config-name=legal_hallucination_checker_gpt \
+uv run --locked python -m polaris_agents.run --config-name=legal_hallucination_checker_gpt \
   data.limit=5
 ```
 

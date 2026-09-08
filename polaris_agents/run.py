@@ -6,29 +6,25 @@ Loads examples from a JSONL dataset, runs a citation-focused agent, and writes
 episode metrics.
 """
 
-import os
-import sys
-import logging
-import hydra
-from typing import Dict, Any, Type, List, Optional
-from omegaconf import DictConfig, OmegaConf
 import json
+import logging
+import os
 import random
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Type
+
+import hydra
+from dotenv import load_dotenv
+from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
-# Add the project root to the path (run_experiment.py is in scripts/experiments/)
-_project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, _project_root)
-# Add scripts directory to path for episode_logging import
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-from polaris_agents.llm import ModelAPI
-from polaris_agents.environment import Environment, Observation
-from polaris_agents.agent import Agent
-from polaris_agents.recording import (
+from .agent import Agent
+from .environment import Environment, HallucinationCheckerEnvironment, Observation
+from .llm import ModelAPI
+from .prompts import LegalHallucinationCheckerDomainKnowledge
+from .recording import (
     create_metrics_collector,
     log_initial_state,
     log_step_header,
@@ -39,7 +35,6 @@ from polaris_agents.recording import (
     log_generic_observation,
     log_beliefs,
 )
-from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -47,11 +42,6 @@ load_dotenv()
 os.environ.setdefault("OTEL_SDK_DISABLED", "true")
 
 logger = logging.getLogger(__name__)
-
-from polaris_agents.environment import HallucinationCheckerEnvironment
-from polaris_agents.prompts import (
-    LegalHallucinationCheckerDomainKnowledge,
-)
 
 TASK_NAME = "legal_hallucination_checker"
 TASK_ID_FIELD = "filename"
@@ -85,8 +75,7 @@ def extract_hallucination_ground_truth(data: Dict[str, Any]) -> Any:
 # =============================================================================
 
 def get_agent_registry() -> Dict[str, Type[Agent]]:
-    from polaris_agents.agent import BayesianOptimalExperimentalDesignAgent
-    from polaris_agents.agent import BOEDCitationTrackerAgent
+    from .agent import BayesianOptimalExperimentalDesignAgent, BOEDCitationTrackerAgent
 
     return {
         "boed": BayesianOptimalExperimentalDesignAgent,
@@ -252,7 +241,7 @@ def create_agent(
     agent_config: Dict[str, Any]
 ) -> Agent:
     """Create an agent based on method name."""
-    from polaris_agents.prompts import (
+    from .prompts import (
         BOEDBeliefUpdatePromptConstructor,
         BOEDActionSelectionPromptConstructor,
         BOEDPredictionPromptConstructor,
@@ -479,7 +468,7 @@ def run_episode(
 
     # Hallucination checker: compute precision, recall, F1
     precision = recall = f1 = None
-    from polaris_agents.evaluation import (
+    from .evaluation import (
         evaluate_entry,
         compute_metrics,
     )
@@ -776,7 +765,7 @@ def run_single_example(
 # MAIN
 # =============================================================================
 
-@hydra.main(version_base=None, config_path="../../configs", config_name="legal_hallucination_checker_gpt")
+@hydra.main(version_base=None, config_path="../configs", config_name="legal_hallucination_checker_gpt")
 def main(cfg: DictConfig):
     """
     Main entry point for running experiments.
@@ -927,7 +916,7 @@ def main(cfg: DictConfig):
     
     # Log batch summary
     if len(results) > 1:
-        from polaris_agents.evaluation import aggregate_metrics, evaluate_hallucination_entry
+        from .evaluation import aggregate_metrics, evaluate_hallucination_entry
         entries = [
             {"list_hallucinations": r.get("true_answer") or [], "predicted_hallucinations": r.get("predicted_hallucinations")}
             for r in results

@@ -12,11 +12,10 @@ from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "scripts/experiments"))
 os.environ["OTEL_SDK_DISABLED"] = "true"
 from dotenv import load_dotenv
 load_dotenv(ROOT / ".env")
-import run_experiment as runner
+from polaris_agents import run as runner
 from polaris_agents.actions import ActionType
 from polaris_agents import llm as llm_module
 from polaris_agents.evaluation import evaluate_entry, compute_metrics
