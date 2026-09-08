@@ -58,6 +58,21 @@ uv run --locked python -m polaris_agents.run --config-name=legal_hallucination_c
 - `environment.max_steps=` — max actions per episode (0 = non-agentic baseline: direct prediction without tool actions or belief updates)
 - `test_run=true` — write outputs to `test/` subfolders
 
+## Regression Checks
+
+Both checks are offline: they make no API calls and block network access.
+
+```bash
+# Replay the recorded OpenRouter baseline end to end
+uv run --locked python scripts/smoke/baseline.py replay --directory reference_data/openrouter_baseline
+
+# Check the retrieval paths the replay does not cover (imports, action dispatch)
+uv run --locked python scripts/smoke/offline_checks.py
+```
+
+Replay rewrites timestamped artifacts under `reference_data/`; discard those
+changes rather than committing them over the reference data.
+
 ## Configuration
 
 Two example configs are provided in `configs/`:

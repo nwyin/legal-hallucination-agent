@@ -8,7 +8,7 @@ import re
 import string
 import time
 from datetime import date, datetime, timedelta
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from dateutil import parser as dateutil_parser
 from dateutil.tz import tzutc

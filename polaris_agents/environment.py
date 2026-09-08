@@ -8,7 +8,6 @@ import datetime
 import json
 import logging
 import os
-import random
 import re
 import string
 from difflib import SequenceMatcher

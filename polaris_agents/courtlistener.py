@@ -15,7 +15,6 @@ import os
 import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlencode
 
 import backoff
 import certifi
