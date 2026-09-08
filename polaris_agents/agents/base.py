@@ -6,7 +6,7 @@ import os
 import logging
 from typing import Optional, List, Dict, Any, Callable
 from ..actions import Action, ActionType
-from ..environments.base import Environment, Observation
+from ..environment import Environment, Observation
 from ..llm import ModelAPI
 
 logger = logging.getLogger(__name__)

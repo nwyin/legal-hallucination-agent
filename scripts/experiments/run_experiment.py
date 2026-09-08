@@ -37,7 +37,7 @@ from episode_logging import (
 )
 
 from polaris_agents.llm import ModelAPI
-from polaris_agents.environments.base import Environment, Observation
+from polaris_agents.environment import Environment, Observation
 from polaris_agents.agents.base import Agent
 from polaris_agents.evaluation import (
     create_metrics_collector,
@@ -51,7 +51,7 @@ os.environ.setdefault("OTEL_SDK_DISABLED", "true")
 
 logger = logging.getLogger(__name__)
 
-from polaris_agents.environments.legal_hallucination_checker import HallucinationCheckerEnvironment
+from polaris_agents.environment import HallucinationCheckerEnvironment
 from polaris_agents.prompts import (
     LegalHallucinationCheckerDomainKnowledge,
 )

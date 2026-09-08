@@ -15,7 +15,7 @@ import re
 from typing import Optional, List, Dict, Tuple, Any
 
 from ..actions import Action, ActionType, get_action_class
-from ..environments.base import Environment, Observation
+from ..environment import Environment, Observation
 from ..llm import ModelAPI
 from .base import Agent
 from ..parsing import (

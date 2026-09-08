@@ -10,7 +10,7 @@ update status, so the agent is less likely to forget previously checked citation
 import logging
 from typing import Optional, Dict, Any
 
-from ..environments.base import Environment, Observation
+from ..environment import Environment, Observation
 from ..llm import ModelAPI
 from ..prompts import (
     BeliefUpdatePromptConstructor,
