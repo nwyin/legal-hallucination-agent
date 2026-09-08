@@ -53,25 +53,3 @@ class Think(Action):
     def __init__(self, thought: str):
         super().__init__(thought=thought)
         self.thought = thought
-
-
-class PullArm(Action):
-    """
-    Action for pulling an arm in a multi-armed bandit environment.
-    
-    This action selects an arm to pull and receives a reward.
-    """
-    
-    action_type = ActionType.PULL_ARM
-    description = "Pull an arm in the multi-armed bandit. Select which arm to pull to receive a reward."
-    inputs = {
-        "arm": {
-            "type": "string",
-            "description": "The arm to pull (e.g., 'A', 'B', 'C')",
-            "required": True
-        }
-    }
-
-    def __init__(self, arm: str):
-        super().__init__(arm=arm)
-        self.arm = arm

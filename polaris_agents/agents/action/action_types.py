@@ -7,8 +7,6 @@ class ActionType(Enum):
     # Internal actions
     PROVIDE_FINAL_RESPONSE = "PROVIDE_FINAL_RESPONSE"
     THINK = "THINK"
-    # Bandit actions
-    PULL_ARM = "PULL_ARM"
     # Tool call actions
     # Search actions
     OPEN_WEB_SEARCH = "OPEN_WEB_SEARCH"
