@@ -9,7 +9,7 @@ This module defines:
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any
 
-from ..agents.action import ActionType
+from ..actions import ActionType
 from ..environments.base import Observation
 
 

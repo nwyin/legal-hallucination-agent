@@ -14,7 +14,7 @@ import logging
 import re
 from typing import Optional, List, Dict, Tuple, Any
 
-from .action import Action, ActionType, get_action_class
+from ..actions import Action, ActionType, get_action_class
 from ..environments.base import Environment, Observation
 from ..llm import ModelAPI
 from .base import Agent

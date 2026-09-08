@@ -1,6 +1,6 @@
 import logging
 from typing import Any, Optional, Dict, List
-from ..agents.action import Action, ActionType
+from ..actions import Action, ActionType
 
 logger = logging.getLogger(__name__)
 

@@ -14,7 +14,7 @@ from guardrails.validators import (
 from guardrails import OnFailAction
 from pydantic import BaseModel, ValidationError, Field, field_validator
 
-from polaris_agents.agents.action import ActionType, Action, get_all_action_classes
+from polaris_agents.actions import ActionType, Action, get_all_action_classes
 
 logger = logging.getLogger(__name__)
 

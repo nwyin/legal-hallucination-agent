@@ -5,7 +5,7 @@ Base Agent class for LLM-powered agents.
 import os
 import logging
 from typing import Optional, List, Dict, Any, Callable
-from .action import Action, ActionType
+from ..actions import Action, ActionType
 from ..environments.base import Environment, Observation
 from ..llm import ModelAPI
 

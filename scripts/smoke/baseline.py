@@ -17,7 +17,7 @@ os.environ["OTEL_SDK_DISABLED"] = "true"
 from dotenv import load_dotenv
 load_dotenv(ROOT / ".env")
 import run_experiment as runner
-from polaris_agents.agents.action import ActionType
+from polaris_agents.actions import ActionType
 from polaris_agents import llm as llm_module
 from polaris_agents.evaluation.hallucination_checker_evaluator import evaluate_entry, compute_metrics
 

@@ -26,7 +26,7 @@ from ..utils import (
     create_action_selection_json_format,
     build_action_guidelines,
 )
-from ...agents.action import ActionType, get_action_class
+from ...actions import ActionType, get_action_class
 from ...environments.base import Observation
 
 

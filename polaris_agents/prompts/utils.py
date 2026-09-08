@@ -8,7 +8,7 @@ Migrated from polaris_agents/agents/prompts.py for the new prompts module.
 import logging
 from typing import List, Dict, Any
 
-from ..agents.action import ActionType, get_action_class
+from ..actions import ActionType, get_action_class
 
 logger = logging.getLogger(__name__)
 

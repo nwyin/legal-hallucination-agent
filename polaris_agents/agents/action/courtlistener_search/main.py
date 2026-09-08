@@ -27,7 +27,7 @@ requests = requests_cache.CachedSession(
     expire_after=timedelta(days=10),
 )
 
-from ...action import Action
+from ....actions import SEARCH_TYPES
 from ....environments.base import Observation
 
 logger = logging.getLogger(__name__)
@@ -41,17 +41,6 @@ def _get_courtlistener_api_key() -> Optional[str]:
 
 # Rate limiting - CourtListener V4 API allows more requests
 RATE_LIMIT_DELAY = 1  # seconds between requests for V4 API
-
-# Search type mappings based on CourtListener API documentation
-SEARCH_TYPES = {
-    "opinions": "o",      # Case law opinion clusters with nested Opinion documents
-    "cases": "r",         # List of Federal cases (dockets) with up to three nested documents
-    "dockets": "d",       # Federal cases (dockets) from PACER
-    "filings": "rd",      # Federal filing documents from PACER
-    "judges": "p",        # Judges
-    "oral_arguments": "oa" # Oral argument audio files
-}
-
 
 @backoff.on_exception(
     backoff.expo,
