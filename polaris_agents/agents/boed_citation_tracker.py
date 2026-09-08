@@ -12,19 +12,13 @@ from typing import Optional, Dict, Any
 
 from ..environments.base import Environment, Observation
 from ..llm import ModelAPI
-from ..prompts.base import (
+from ..prompts import (
     BeliefUpdatePromptConstructor,
     ActionSelectionPromptConstructor,
     PredictionPromptConstructor,
-)
-
-from ..prompts.agents.boed import (
     BOEDActionSelectionPromptConstructor,
-)
-
-from ..prompts.agents.boed_citation_tracker import (
     BOEDCitationTrackerBeliefUpdatePromptConstructor,
-    BOEDCitationTrackerPredictionPromptConstructor
+    BOEDCitationTrackerPredictionPromptConstructor,
 )
 
 from .boed import BayesianOptimalExperimentalDesignAgent

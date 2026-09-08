@@ -52,7 +52,7 @@ os.environ.setdefault("OTEL_SDK_DISABLED", "true")
 logger = logging.getLogger(__name__)
 
 from polaris_agents.environments.legal_hallucination_checker import HallucinationCheckerEnvironment
-from polaris_agents.prompts.environments.legal_hallucination_checker import (
+from polaris_agents.prompts import (
     LegalHallucinationCheckerDomainKnowledge,
 )
 
@@ -255,14 +255,12 @@ def create_agent(
     agent_config: Dict[str, Any]
 ) -> Agent:
     """Create an agent based on method name."""
-    from polaris_agents.prompts.agents.boed import (
+    from polaris_agents.prompts import (
         BOEDBeliefUpdatePromptConstructor,
         BOEDActionSelectionPromptConstructor,
         BOEDPredictionPromptConstructor,
-    )
-    from polaris_agents.prompts.agents.boed_citation_tracker import (
         BOEDCitationTrackerBeliefUpdatePromptConstructor,
-        BOEDCitationTrackerPredictionPromptConstructor
+        BOEDCitationTrackerPredictionPromptConstructor,
     )
     
     agent_registry = get_agent_registry()

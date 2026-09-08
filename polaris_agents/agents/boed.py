@@ -30,17 +30,16 @@ from .utils import (
     parse_json_from_text,
 )
 
-from ..prompts.base import (
+from ..prompts import (
     BeliefUpdatePromptConstructor,
     ActionSelectionPromptConstructor,
     PredictionPromptConstructor,
-)
-from ..prompts.agents.boed import (
     BOEDBeliefUpdatePromptConstructor,
     BOEDActionSelectionPromptConstructor,
     BOEDPredictionPromptConstructor,
+    format_action_history,
+    create_actions_parameters_description,
 )
-from ..prompts.utils import format_action_history, create_actions_parameters_description
 
 
 logger = logging.getLogger(__name__)
