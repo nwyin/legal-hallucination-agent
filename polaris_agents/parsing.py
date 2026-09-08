@@ -289,8 +289,6 @@ def create_model_callable(model_api, model_id: str, provider: str, max_tokens: i
     return model_callable
 
 
-
-
 # Individual Pydantic models for each action type using discriminated unions
 # Using Literal with enum values for discriminated union compatibility
 class ProvideFinalResponseAction(BaseModel):

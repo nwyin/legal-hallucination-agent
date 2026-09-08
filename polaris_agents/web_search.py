@@ -219,10 +219,6 @@ def _format_relative_time(dt: datetime) -> str:
 # --- SerpAPI client ---
 
 
-# Load environment variables from .env file
-
-
-
 class SerpApiClient:
     """Client for interacting with SerpApi search services using direct requests."""
     
@@ -414,10 +410,6 @@ class SerpApiClient:
 
 
 # --- MediaStack client ---
-
-
-# Load environment variables from .env file
-
 
 
 class MediaStackClient:
