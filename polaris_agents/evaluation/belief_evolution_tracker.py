@@ -42,7 +42,7 @@ class BeliefEvolutionResult:
 class BeliefEvolutionTracker:
     """Tracks evolution of agent beliefs over time."""
     
-    def __init__(self, model_api: ModelAPI, model_name: str = "gpt-4o-mini", provider: str = "openai", max_tokens: int = 10000):
+    def __init__(self, model_api: ModelAPI, model_name: str = "openai/gpt-4o-mini", provider: str = "openrouter", max_tokens: int = 10000):
         """
         Initialize the belief evolution tracker.
         

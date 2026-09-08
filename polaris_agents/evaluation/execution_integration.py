@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 
 def create_metrics_collector(
     model_api: ModelAPI,
-    model_name: str = "gpt-4o-mini",
-    provider: str = "openai",
+    model_name: str = "openai/gpt-4o-mini",
+    provider: str = "openrouter",
     max_tokens: int = 10000,
     save_dir: str = "metrics",
     enable_action_classification: bool = True,

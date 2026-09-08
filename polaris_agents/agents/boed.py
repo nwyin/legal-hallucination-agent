@@ -97,7 +97,7 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             environment: The environment to interact with
             model_api: API for making LLM calls
             model_id: Model identifier
-            provider: Model provider (e.g., "gemini", "openai")
+            provider: Model provider (openrouter only)
             max_tokens: Maximum tokens for LLM responses
             temperature: Temperature for LLM generation
             seed: Seed for reproducible LLM outputs
@@ -114,11 +114,29 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             belief_update_provider: Optional provider override for belief updates only
             belief_update_temperature: Optional temperature override for belief updates only
         """
+        normalized_provider = (provider or "openrouter").lower().strip()
+        if normalized_provider != "openrouter":
+            logger.warning(
+                f"Provider '{provider}' is not supported in this project. "
+                "Forcing provider to 'openrouter' for single-provider setup."
+            )
+            normalized_provider = "openrouter"
+
+        normalized_belief_update_provider = (
+            (belief_update_provider or normalized_provider).lower().strip()
+        )
+        if normalized_belief_update_provider != "openrouter":
+            logger.warning(
+                f"belief_update_provider '{belief_update_provider}' is not supported. "
+                "Forcing belief update provider to 'openrouter'."
+            )
+            normalized_belief_update_provider = "openrouter"
+
         super().__init__(
             environment=environment,
             model_api=model_api,
             model_id=model_id,
-            provider=provider,
+            provider=normalized_provider,
             max_tokens=max_tokens,
             temperature=temperature,
             seed=seed,
@@ -166,7 +184,7 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
         )
         self.max_tokens_config = max_tokens_config or {}
         self.belief_update_model_id = belief_update_model_id or self.model_id
-        self.belief_update_provider = belief_update_provider or self.provider
+        self.belief_update_provider = normalized_belief_update_provider
         self.belief_update_temperature = (
             self.temperature if belief_update_temperature is None else belief_update_temperature
         )
@@ -641,8 +659,6 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             response = self.model_api(**prediction_kwargs)
 
             # Parse the response; if it fails, retry once with a re-ask message.
-            # For local providers, also retry with thinking disabled (SGLang chat_template_kwargs).
-            # For remote providers (sandbox, openai, etc.), thinking cannot be disabled this way.
             try:
                 prediction, confidence = parse_prediction_response(response)
             except (ValueError, KeyError) as e:
@@ -656,13 +672,8 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
                     {"role": "assistant", "content": response or ""},
                     {"role": "user", "content": reask_msg},
                 ]
-                is_local_provider = self.provider == "local"
-                if is_local_provider:
-                    logger.info("Retrying prediction with thinking disabled and re-ask message")
-                    retry_kwargs = {**prediction_kwargs, 'prompt': retry_prompt, 'extra_body': {"chat_template_kwargs": {"enable_thinking": False}}}
-                else:
-                    logger.info("Retrying prediction with re-ask message (remote provider, skipping thinking-disable)")
-                    retry_kwargs = {**prediction_kwargs, 'prompt': retry_prompt}
+                logger.info("Retrying prediction with re-ask message")
+                retry_kwargs = {**prediction_kwargs, "prompt": retry_prompt}
                 try:
                     response = self.model_api(**retry_kwargs)
                     prediction, confidence = parse_prediction_response(response)

@@ -29,7 +29,7 @@ def create_model_callable(model_api, model_id: str, provider: str, max_tokens: i
     Args:
         model_api: Your ModelAPI instance
         model_id: The model ID to use
-        provider: The provider (openai, openrouter, gemini)
+        provider: The provider (openrouter)
         max_tokens: Maximum tokens for responses
         temperature: Temperature for generation
         
@@ -65,7 +65,7 @@ def create_model_callable(model_api, model_id: str, provider: str, max_tokens: i
                 max_tokens=call_max_tokens
             )
             
-            # All model APIs (MockModelAPI, OpenAI, OpenRouter, Gemini) return strings directly
+            # Model APIs return strings directly
             if isinstance(response, str):
                 return response
             else:
@@ -343,7 +343,7 @@ def create_unified_action_guard(model_api, model_id: str, provider: str,
     Args:
         model_api: Your ModelAPI instance
         model_id: The model ID to use
-        provider: The provider (openai, openrouter, gemini)
+        provider: The provider (openrouter)
         max_tokens: Maximum tokens for responses
         temperature: Temperature for generation
         num_reasks: Number of reask attempts

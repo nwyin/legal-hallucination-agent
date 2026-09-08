@@ -34,8 +34,8 @@ class ActionClassifier:
     def __init__(
         self, 
         model_api: ModelAPI, 
-        model_name: str = "gpt-4o-mini",
-        provider: str = "openai",
+        model_name: str = "openai/gpt-4o-mini",
+        provider: str = "openrouter",
         max_tokens: int = 4000,  # Output tokens only - responses are short JSON with scores and reasoning
         domain_knowledge: Optional[DomainKnowledgeProvider] = None
     ):
@@ -45,7 +45,7 @@ class ActionClassifier:
         Args:
             model_api: Model API for LLM calls
             model_name: Model to use for classification (default: gpt-4o-mini)
-            provider: Model provider to use (default: openai)
+            provider: Model provider to use (default: openrouter)
             max_tokens: Maximum tokens for LLM responses (default: 10000)
             domain_knowledge: Optional domain knowledge provider for task-specific θ/D definitions
         """

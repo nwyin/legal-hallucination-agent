@@ -167,9 +167,6 @@ def setup_api_keys():
     """Check and log available API keys."""
     keys = {
         "OPENROUTER_API_KEY": "OpenRouter",
-        "GEMINI_API_KEY": "Gemini",
-        "OPENAI_API_KEY": "OpenAI",
-        "AI_SANDBOX_KEY": "Sandbox",
         "COURTLISTENER_API_KEY": "CourtListener",
     }
     for env_var, name in keys.items():
@@ -182,16 +179,27 @@ def check_required_api_key(provider: str) -> bool:
     """Check if required API key is available for the provider."""
     key_map = {
         "openrouter": "OPENROUTER_API_KEY",
-        "openai": "OPENAI_API_KEY",
-        "gemini": "GEMINI_API_KEY",
-        "sandbox": "AI_SANDBOX_KEY",
     }
-    required_key = key_map.get(provider.lower()) if provider else None
+    normalized_provider = (provider or "").lower().strip()
+    if normalized_provider != "openrouter":
+        logger.error("Only OpenRouter is supported. Set agent.model.provider (and evaluation_model.provider, if set) to 'openrouter'.")
+        return False
+    required_key = key_map.get(normalized_provider)
     if required_key and not os.getenv(required_key):
         logger.error(f"{required_key} is required but not found")
         print(f"Please set: export {required_key}='your_key'")
         return False
     return True
+
+
+def _enforce_openrouter_provider(cfg: Dict[str, Any], cfg_name: str) -> Dict[str, Any]:
+    """Normalize provider configuration to OpenRouter-only."""
+    provider = (cfg.get("provider") or "openrouter").lower().strip()
+    if provider and provider != "openrouter":
+        logger.warning(
+            f"{cfg_name} provider '{provider}' is ignored. Using 'openrouter' to enforce single-provider setup."
+        )
+    return {**(cfg or {}), "provider": "openrouter"}
 
 
 def resolve_agent_model_config(cfg: DictConfig) -> Dict[str, Any]:
@@ -486,44 +494,6 @@ def create_agent(
         common_params['prediction_prompt_constructor'] = BOEDCitationTrackerPredictionPromptConstructor(domain_knowledge)
 
     return agent_class(**common_params)
-
-
-def _create_hallucination_checker_agent(
-    environment,
-    model_api,
-    model_config: Dict[str, Any],
-    agent_config: Dict[str, Any],
-    agent_class,
-):
-    """Create HallucinationCheckerAgent with task-specific params."""
-    from polaris_agents.models.local_llm import init_local_model
-    
-    brief_name = agent_config.get('brief_name', 'unknown')
-    provider = model_config.get('provider', 'sandbox')
-    
-    llm, tokenizer = None, None
-    if provider == "local":
-        model_path = model_config.get('model_path', '')
-        tp_size = model_config.get('tp_size', 1)
-        llm, tokenizer = init_local_model(model_path=model_path, tp_size=tp_size, logger=logger)
-    
-    return agent_class(
-        llm=llm,
-        tokenizer=tokenizer,
-        brief_name=brief_name,
-        logger=logger,
-        environment=environment,
-        model_api=model_api,
-        model_id=model_config.get('model_id', 'gpt-4-turbo'),
-        provider=provider,
-        max_tokens=model_config.get('max_tokens', 16000),
-        temperature=model_config.get('temperature', 0.7),
-        thinking_enabled=agent_config.get('thinking_enabled', True),
-        closed_search_enabled=agent_config.get('closed_search_enabled', False),
-        open_web_search_enabled=agent_config.get('open_web_search_enabled', True),
-        courtlistener_search_enabled=agent_config.get('courtlistener_search_enabled', True),
-        courtlistener_opinion_access_enabled=agent_config.get('courtlistener_opinion_access_enabled', True),
-    )
 
 
 # =============================================================================
@@ -1075,6 +1045,12 @@ def main(cfg: DictConfig):
     model_config = resolve_agent_model_config(cfg)
     eval_model_config = OmegaConf.to_container(cfg.get('evaluation_model', model_config), resolve=True)
     eval_settings = OmegaConf.to_container(cfg.get('evaluation', {}), resolve=True)
+
+    model_config = _enforce_openrouter_provider(model_config, "agent.model.provider")
+    eval_model_config = _enforce_openrouter_provider(
+        eval_model_config,
+        "evaluation_model.provider",
+    )
     
     # Check API key
     if not check_required_api_key(model_config.get('provider')):

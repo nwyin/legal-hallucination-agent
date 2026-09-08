@@ -22,7 +22,9 @@ The agent uses **Bayesian Optimal Experimental Design (BOED)** to strategically 
 pip install -r requirements.txt
 ```
 
-Set any required API keys as environment variables (e.g. `OPENAI_API_KEY`, `SERPAPI_KEY`, `COURTLISTENER_TOKEN`).
+Set the required key(s) as environment variables, especially:
+
+- `OPENROUTER_API_KEY` (for all LLM calls)
 
 ## Running Experiments
 
@@ -53,30 +55,30 @@ python scripts/experiments/run_experiment.py --config-name=legal_hallucination_c
 Two example configs are provided in `configs/`:
 
 ### `legal_hallucination_checker_gpt.yaml`
-For API-accessible models (OpenAI, sandbox, etc.):
+For OpenRouter models:
 
 ```yaml
 agent:
   model:
-    provider: "openai"   # or openrouter, gemini
-    model_id: "gpt-5"
+    provider: "openrouter"
+    model_id: "openai/gpt-4o"
     temperature: 0.8
     max_tokens: 10000
 ```
 
 ### `legal_hallucination_checker_gptoss.yaml`
-Example config for `gpt-oss`:
+Another example using a different OpenRouter model ID:
 
 ```yaml
 agent:
   model:
-    provider: "openai"
-    model_id: "gpt-oss-120b"
+    provider: "openrouter"
+    model_id: "deepseek/deepseek-r1"
     temperature: 0.8
     max_tokens: 4096
 ```
 
-You can point this config to any supported API provider in your environment.
+Use any OpenRouter model ID you have access to.
 
 ### Key config options
 
@@ -86,7 +88,7 @@ You can point this config to any supported API provider in your environment.
 | `data.output_path` | Path to write output JSONL |
 | `data.id_field` | Field in JSONL used as example ID |
 | `data.skip_completed` | Skip examples already in output file |
-| `agent.model.provider` | LLM provider (`openai`, `sandbox`, `gemini`, `openrouter`) |
+| `agent.model.provider` | LLM provider (`openrouter`) |
 | `agent.thinking_enabled` | Enable extended thinking / chain-of-thought |
 | `agent.open_web_search_enabled` | Enable web search tool |
 | `agent.courtlistener_search_enabled` | Enable CourtListener search |

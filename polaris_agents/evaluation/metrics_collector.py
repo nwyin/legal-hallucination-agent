@@ -128,7 +128,7 @@ class MetricsCollector:
             agent_type: Type of agent being used
             environment_info: Information about the environment
             method: Method name (e.g., 'ids_oed', 'boed', 'reflexion')
-            model_id: Model ID used (e.g., 'gemini-2.5-pro')
+            model_id: Model ID used (e.g., 'openrouter ID like openai/gpt-4o-mini')
         """
         self.current_episode = EpisodeMetrics(
             episode_id=episode_id,

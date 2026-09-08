@@ -1,9 +1,6 @@
 import attrs
 import logging
-from .openai_llm import OpenAIChatModel
 from .openrouter_llm import OpenRouterChatModel
-from .gemini_llm import GeminiChatModel
-from .sandbox_llm import SandboxChatModel
 
 logger = logging.getLogger(__name__)
 
@@ -47,10 +44,7 @@ class ModelAPI:
     
     def __init__(self):
         self._providers = {
-            "openai": OpenAIChatModel(),
-            "openrouter": OpenRouterChatModel(),
-            "gemini": GeminiChatModel(),
-            "sandbox": SandboxChatModel()
+            "openrouter": OpenRouterChatModel()
         }
     
     def __call__(self, model_id: str = None, prompt: str = None, max_attempts: int = 3, provider: str = None, n: int = 1, num_candidates: int = 1, **kwargs):
@@ -61,14 +55,14 @@ class ModelAPI:
             model_id: The model identifier
             prompt: The input prompt
             max_attempts: Maximum number of retry attempts
-            provider: The provider to use (openai, openrouter, gemini, sandbox)
+            provider: The provider to use (openrouter)
             n: Number of responses to generate
             num_candidates: Number of candidates to generate
             **kwargs: Additional parameters to pass to the provider
         """
         
         if provider is None:
-            raise ValueError("Provider must be specified. Available providers: openai, openrouter, gemini, sandbox")
+            raise ValueError("Provider must be specified. Available provider: openrouter")
         
         if provider not in self._providers:
             raise ValueError(f"Provider '{provider}' not supported. Available providers: {list(self._providers.keys())}")

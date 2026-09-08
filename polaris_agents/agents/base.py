@@ -44,7 +44,7 @@ class Agent:
             max_tokens: Maximum tokens for LLM responses
             temperature: Default temperature for LLM generation
             temperature_action_selection: Temperature for action selection (defaults to temperature if not set)
-            seed: Seed for reproducible LLM outputs (supported by Gemini)
+            seed: Seed for reproducible LLM outputs
             thinking_enabled: Whether to allow thinking actions
             closed_search_enabled: Whether to allow closed search actions
             open_web_search_enabled: Whether to allow open web search actions
