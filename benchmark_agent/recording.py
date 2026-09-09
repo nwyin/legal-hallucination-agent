@@ -2,7 +2,7 @@
 
 import json
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -43,11 +43,7 @@ class EpisodeMetrics:
     total_steps: int = 0
     total_reward: float = 0.0
     final_outcome: str | None = None
-    step_metrics: list[StepMetrics] = None
-
-    def __post_init__(self):
-        if self.step_metrics is None:
-            self.step_metrics = []
+    step_metrics: list[StepMetrics] = field(default_factory=list)
 
 
 class MetricsCollector:
@@ -89,7 +85,6 @@ class MetricsCollector:
             agent_type=agent_type,
             environment_info=environment_info or {},
             start_time=datetime.now(UTC).isoformat(),
-            step_metrics=[],
         )
         # Store method separately for directory structure
         self.current_episode_method = method
