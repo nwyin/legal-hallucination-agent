@@ -21,47 +21,23 @@ logger = logging.getLogger(__name__)
 # --- JSON and prediction response helpers ---
 
 
-def _match_braces(text: str, start: int) -> str | None:
-    """Return the balanced {...} object starting at text[start], or None."""
-    depth = 0
-    for i in range(start, len(text)):
-        if text[i] == "{":
-            depth += 1
-        elif text[i] == "}":
-            depth -= 1
-            if depth == 0:
-                return text[start : i + 1]
-    return None
-
-
-def extract_json_from_text(text: str) -> str | None:
-    """Extract the first JSON object from text, preferring one inside a ```json fence."""
-    fenced = re.search(r"```(?:json)?\s*\{", text, flags=re.IGNORECASE)
-    if fenced:
-        json_str = _match_braces(text, fenced.end() - 1)
-        if json_str:
-            return json_str
-    start = text.find("{")
-    return _match_braces(text, start) if start != -1 else None
-
-
 def parse_json_from_text(
     text: str, response_name: str = "response"
 ) -> dict[str, Any] | None:
-    """Parse the first JSON object in text (tolerating trailing commas).
+    """Decode the first object, preferring one inside a ```json fence.
 
-    Returns None if no object is found; raises ValueError if one is found but invalid.
+    Returns None if there is no object opener. Malformed or incomplete JSON at
+    the selected opener raises ValueError; surrounding text is ignored.
     """
-    json_str = extract_json_from_text(text)
-    if not json_str:
+    fenced = re.search(r"```(?:json)?\s*\{", text, flags=re.IGNORECASE)
+    start = fenced.end() - 1 if fenced else text.find("{")
+    if start == -1:
         return None
     try:
-        return json.loads(json_str)
+        data, _ = json.JSONDecoder().raw_decode(text, start)
+        return data
     except json.JSONDecodeError as e:
-        try:
-            return json.loads(json_str.replace(",}", "}").replace(",]", "]"))
-        except json.JSONDecodeError:
-            raise ValueError(f"Invalid JSON in {response_name} response: {e}") from e
+        raise ValueError(f"Invalid JSON in {response_name} response: {e}") from e
 
 
 def parse_json_response(

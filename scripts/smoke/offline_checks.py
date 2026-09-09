@@ -348,6 +348,62 @@ def web_search_keeps_undated_results():
 
 
 @check
+def embedded_json_objects():
+    """Decode nesting and quoted delimiters while preserving fence preference."""
+    value = {
+        "text": 'both { and } with "quotes" and \\ escapes,]}',
+        "nested": {"x": [1, 2]},
+    }
+    encoded = json.dumps(value)
+    for wrapped in (
+        encoded,
+        f"preface {encoded} trailing text {{}}",
+        f'{{"ignore": true}}\n```JSON\n{encoded}\n```',
+        f"```\n{encoded}\n```",
+    ):
+        assert parsing.parse_json_from_text(wrapped) == value
+    assert parsing.parse_json_from_text("no object here") is None
+    assert parsing.parse_json_from_text("{}") == {}
+    for malformed in (
+        '{"text": "keep ,] exactly", "x": 1,}',
+        '{"x": [1,]}',
+        '{"x": 1, }',
+        '{"nested": {"x": 1}',
+        '{bad} {"valid": true}',
+        '{} ```json\n{"incomplete":',
+    ):
+        try:
+            parsing.parse_json_response(malformed, "test")
+        except ValueError as error:
+            assert "Invalid JSON in test response" in str(error)
+        else:
+            raise AssertionError(f"Must reject without repairing: {malformed}")
+
+
+@check
+def embedded_prediction_lists():
+    """Stdlib decoding retains item normalization and malformed-list fallback."""
+    value = [
+        'quoted ] and [ with "quotes" and \\ escapes',
+        [1, 2],
+        {"x": "]"},
+        None,
+        3,
+        " padded ",
+    ]
+    expected = [str(x).strip() for x in value if x is not None]
+    for wrapped in (
+        json.dumps(value),
+        f"preface ```json\n{json.dumps(value)}\n``` trailing []",
+    ):
+        assert evaluation.parse_predictions(wrapped) == expected
+    assert evaluation.parse_predictions("prefix [] suffix") == []
+    for malformed in ('["x",]', '["x"', '[bad] ["valid"]'):
+        assert evaluation.parse_predictions(malformed) == [malformed]
+    assert evaluation.parse_predictions([json.dumps(["x"]), " y ", None]) == ["x", "y"]
+
+
+@check
 def action_parsing_round_trip():
     """Model output parses into the action parameters the environment expects."""
     action_type, parameters = parsing.parse_action_response(

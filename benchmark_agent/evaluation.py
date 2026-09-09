@@ -15,55 +15,18 @@ logger = logging.getLogger(__name__)
 
 
 def _extract_list_from_string(s: str) -> list[str] | None:
-    """Return the first JSON list embedded in `s`, or None if there is none.
+    """Decode the first embedded JSON list and normalize its items.
 
-    The scanner is quote- and escape-aware so brackets inside string items do
-    not end the list early. A list that is present but invalid JSON also yields
-    None; a valid empty list yields [].
+    Missing or invalid JSON yields None; a valid empty list yields [].
     """
-    s = s.strip()
     start = s.find("[")
     if start == -1:
         return None
-    depth = 0
-    i = start
-    in_string = False
-    quote_char = None
-    escape = False
-    while i < len(s):
-        c = s[i]
-        if escape:
-            escape = False
-            i += 1
-            continue
-        if in_string:
-            if c == "\\":
-                escape = True
-            elif c == quote_char:
-                in_string = False
-            i += 1
-            continue
-        if c in ('"', "'"):
-            in_string = True
-            quote_char = c
-            i += 1
-            continue
-        if c == "[":
-            depth += 1
-        elif c == "]":
-            depth -= 1
-            if depth == 0:
-                try:
-                    parsed = json.loads(s[start : i + 1])
-                    return (
-                        [str(x).strip() for x in parsed if x is not None]
-                        if isinstance(parsed, list)
-                        else None
-                    )
-                except json.JSONDecodeError:
-                    return None
-        i += 1
-    return None
+    try:
+        parsed, _ = json.JSONDecoder().raw_decode(s, start)
+    except json.JSONDecodeError:
+        return None
+    return [str(x).strip() for x in parsed if x is not None]
 
 
 def parse_predictions(raw: Any) -> list[str]:
