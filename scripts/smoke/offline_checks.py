@@ -170,8 +170,12 @@ def scratchpad_dispatch():
         env = make_environment(tmp)
         env.step(actions.EditScratchpad(operation="append", content="first note"))
         obs = env.step(actions.EditScratchpad(operation="append", content="second note"))
-        assert "first note" in obs.result["scratchpad"]
-        assert "second note" in obs.result["scratchpad"]
+        assert obs.result["scratchpad"] == "first note\nsecond note", obs.result
+        env.step(actions.EditScratchpad(operation="insert", content="zeroth", position=0))
+        obs = env.step(actions.EditScratchpad(operation="replace", content="2nd", position=2))
+        assert obs.result["scratchpad"] == "zeroth\nfirst note\n2nd", obs.result
+        obs = env.step(actions.EditScratchpad(operation="replace", content="x", position=9))
+        assert obs.result["error"] == "edit failed", obs.result
         assert isinstance(env.document_manager, documents.DocumentManager)
 
 

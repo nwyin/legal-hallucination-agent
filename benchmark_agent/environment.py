@@ -16,10 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from .tracing import langfuse
 from .actions import Action, ActionType
 from .courtlistener import NonRetryableError, fetch_opinion, lookup_citation, search_courtlistener
-from .documents import (
-    DocumentManager,
-    read_document_content as read_document_content_fn,
-)
+from .documents import DocumentManager, read_document_content
 from .prompts import (
     get_response_requirements,
     get_search_capabilities_open_search,
@@ -525,7 +522,7 @@ class HallucinationCheckerEnvironment(Environment):
         if not isinstance(plain, str):
             plain = str(opinion)
         case_name = opinion.get("case_name", "") if isinstance(opinion, dict) else ""
-        self.document_manager.register_opinion(opinion_id, plain, case_name=case_name)
+        self.document_manager.register_opinion(opinion_id, plain)
         # Return observation with snippet only (not full opinion)
         snippet = (plain[: self.OPINION_SNIPPET_LENGTH] + "...") if len(plain) > self.OPINION_SNIPPET_LENGTH else plain
         return Observation(
@@ -710,7 +707,7 @@ class HallucinationCheckerEnvironment(Environment):
             )
         key = self.document_manager.resolve_document_id(opinion_id)
         if key is None:
-            available = [k for k in self.document_manager.documents if k.startswith("opinion_")]
+            available = list(self.document_manager.documents)
             logger.info(
                 "READ_DOCUMENT result: opinion_id=%s error=document not found, available=%s, content=None",
                 opinion_id,
@@ -725,21 +722,13 @@ class HallucinationCheckerEnvironment(Environment):
                 },
                 metadata={"action_type": "READ_DOCUMENT", "error": "not_found"},
             )
-        content = self.document_manager.get_document_content(key)
-        if content is None:
-            logger.info("READ_DOCUMENT result: opinion_id=%s error=empty document, content=None", key)
-            return Observation(
-                result={"action_type": "READ_DOCUMENT", "opinion_id": opinion_id, "error": "empty document", "content": None},
-                metadata={"action_type": "READ_DOCUMENT", "error": "empty"},
-            )
+        content = self.document_manager.documents[key]
         try:
             start_line = max(0, int(start_line))
             num_lines = max(1, min(500, int(num_lines)))
         except (TypeError, ValueError):
             start_line, num_lines = 0, 50
-        text, actual_start, actual_end, total_lines = read_document_content_fn(
-            content, opinion_id, start_line, num_lines
-        )
+        text, actual_start, actual_end, total_lines = read_document_content(content, start_line, num_lines)
         # Log what is being returned for READ_DOCUMENT
         preview_len = 400
         content_preview = (text[:preview_len] + "...") if len(text) > preview_len else text
@@ -873,9 +862,7 @@ BRIEF TEXT: {self.brief_text}\n\n"""
         super().reset()
         self.current_step = 0
         self.search_history = []
-        self.document_manager.documents.clear()
-        self.document_manager.scratchpad.clear()
-        self.document_manager.scratchpad_counter = 0
+        self.document_manager.reset()
 
         self.initial_observation = Observation(
             result="Initial State.",
