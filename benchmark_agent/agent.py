@@ -39,10 +39,6 @@ from .tracing import langfuse, observe
 logger = logging.getLogger(__name__)
 
 
-# Type for prompt logging callback: (system_prompt, user_prompt, prompt_type, step) -> None
-PromptCallback = Callable[[str, str, str, int], None]
-
-
 class Agent:
     """
     Base agent class that provides common functionality for LLM-powered agents.
@@ -55,13 +51,11 @@ class Agent:
         model_id: str,
         max_tokens: int = 1000,
         temperature: float = 0.3,
-        temperature_action_selection: float | None = None,
         seed: int | None = None,
         thinking_enabled: bool = True,
         open_web_search_enabled: bool = False,
         courtlistener_search_enabled: bool = False,
         courtlistener_opinion_access_enabled: bool = False,
-        prompt_callback: PromptCallback = None,
     ):
         """
         Initialize the base agent.
@@ -72,30 +66,22 @@ class Agent:
             model_id: The specific model ID to use
             max_tokens: Maximum tokens for LLM responses
             temperature: Default temperature for LLM generation
-            temperature_action_selection: Temperature for action selection (defaults to temperature if not set)
             seed: Seed for reproducible LLM outputs
             thinking_enabled: Whether to allow thinking actions
             open_web_search_enabled: Whether to allow open web search actions
             courtlistener_search_enabled: Whether to allow CourtListener search actions
             courtlistener_opinion_access_enabled: Whether to allow CourtListener opinion fetch by ID
-            prompt_callback: Optional callback for logging prompts. Called with (system_prompt, user_prompt, prompt_type, step)
         """
         self.environment = environment
         self.model_api = model_api
         self.model_id = model_id
         self.max_tokens = max_tokens
         self.temperature = temperature
-        self.temperature_action_selection = (
-            temperature_action_selection
-            if temperature_action_selection is not None
-            else temperature
-        )
         self.seed = seed
         self.thinking_enabled = thinking_enabled
         self.open_web_search_enabled = open_web_search_enabled
         self.courtlistener_search_enabled = courtlistener_search_enabled
         self.courtlistener_opinion_access_enabled = courtlistener_opinion_access_enabled
-        self.prompt_callback = prompt_callback
 
         # Initialize the available agent actions from environment
         self.action_space = self.environment.action_space.copy()
@@ -192,20 +178,6 @@ class Agent:
         This should be overridden by subclasses to provide specific state management.
         """
         raise NotImplementedError("Subclasses must implement update_state")
-
-    def log_prompts(self, system_prompt: str, user_prompt: str, prompt_type: str):
-        """
-        Log prompts via callback if one is registered.
-
-        Args:
-            system_prompt: The system prompt
-            user_prompt: The user prompt
-            prompt_type: Type of prompt (e.g., "ACTION_SELECTION", "BELIEF_UPDATE", "PREDICTION")
-        """
-        if self.prompt_callback:
-            self.prompt_callback(
-                system_prompt, user_prompt, prompt_type, self.current_step + 1
-            )
 
 
 def extract_action_parameters(action: Any) -> dict[str, Any]:

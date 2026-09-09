@@ -362,7 +362,7 @@ def run_episode(
             elif action_type == "THINK":
                 log_think_action(action)
             elif action_type in ("OPEN_WEB_SEARCH", "OPEN_COURTLISTENER_SEARCH"):
-                log_search_action(action, observation, action_type)
+                log_search_action(action, observation)
             else:
                 log_generic_observation(observation)
             log_beliefs(agent)

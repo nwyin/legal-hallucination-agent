@@ -261,7 +261,6 @@ agent:
   model:
     model_id: "openai/gpt-4o"
     temperature: 0.8
-    max_tokens: 10000
 ```
 
 ### `legal_hallucination_checker_gptoss.yaml`
@@ -272,17 +271,17 @@ agent:
   model:
     model_id: "deepseek/deepseek-r1"
     temperature: 0.8
-    max_tokens: 4096
 ```
 
-Use any OpenRouter model ID you have access to.
+Use any OpenRouter model ID you have access to. Set token budgets under
+`agent.max_tokens.action_selection`, `agent.max_tokens.belief_update`, and
+`agent.max_tokens.prediction`.
 
 ### Key config options
 
 | Key | Description |
 |-----|-------------|
 | `data.dataset_path` | Path to JSONL dataset |
-| `data.output_path` | Path to write output JSONL |
 | `data.id_field` | Field in JSONL used as example ID |
 | `data.skip_completed` | Skip examples already in output file |
 | `agent.thinking_enabled` | Enable extended thinking / chain-of-thought |
@@ -300,10 +299,11 @@ The dataset is a JSONL file where each line is a JSON object representing one le
 
 ```
 outputs/
-└── run_checker.log           # Main run log
-    search_results.log        # Search queries and results
+├── {dataset}/{method}/batch_results.json
+└── experiments/{dataset}/{model_id}/{method}/
+    └── {example_id}_{timestamp}.log  # When logging.experiment_logs is enabled
 
 metrics/
-└── legal_hallucination_checker/{model_id}/{method}/
+└── {dataset}/{model_id}/{method}_steps{max_steps}/
     └── {example_id}.json     # Per-episode metrics
 ```

@@ -42,16 +42,6 @@ class DomainKnowledgeProvider(ABC):
             should gather to make accurate predictions.
         """
 
-    @abstractmethod
-    def get_design_description(self) -> str:
-        """
-        Get the description of D (design effectiveness) for this task family.
-
-        Returns:
-            A description of meta-level knowledge about strategies, heuristics,
-            and sources that improve performance across tasks of this type.
-        """
-
     def get_action_selection_guidance(self) -> str | None:
         """
         Optional task-specific guidance for action selection (e.g. which actions
@@ -71,28 +61,6 @@ class DomainKnowledgeProvider(ABC):
             A brief "task and domain" section (e.g. 2–5 lines), or None to use default.
         """
         return None
-
-    def get_belief_framework_description(self) -> str:
-        """
-        Get the full belief framework description combining D and θ.
-
-        Returns:
-            Formatted string describing the two belief layers.
-        """
-        theta_desc = self.get_theta_description()
-        design_desc = self.get_design_description()
-
-        description = f"""## Belief Framework
-You maintain beliefs over two kinds of uncertainty:
-
-{theta_desc}
-
-{design_desc}
-
-The boundary between design parameters (D) and task parameters (θ) is sometimes blurry. 
-Some information can inform both belief spaces."""
-
-        return description
 
 
 class BeliefUpdatePromptConstructor(ABC):
@@ -328,47 +296,6 @@ def create_selection_actions_description(action_space: list[ActionType]) -> str:
     return actions_desc
 
 
-def create_actions_parameters_description(action_space: list[ActionType]) -> str:
-    """
-    Create a description of available actions listing type, description,
-    and input parameters (required and optional), without instruction text.
-
-    Args:
-        action_space: List of available action types
-
-    Returns:
-        Formatted string describing actions and parameters
-    """
-    actions_desc = ""
-    for i, action_type in enumerate(action_space):
-        action_class = get_action_class(action_type)
-        if not action_class:
-            continue
-        actions_desc += f"{i}. action: {action_class.action_type.value} - {action_class.description}\n"
-        if action_class.inputs:
-            required_params = []
-            optional_params = []
-            for param_name, param_spec in action_class.inputs.items():
-                param_type = param_spec.get("type", "string")
-                param_description = param_spec.get("description", "")
-                is_required = param_spec.get("required", True)
-                param_info = f"{param_name} ({param_type}): {param_description}"
-                if is_required:
-                    required_params.append(param_info)
-                else:
-                    optional_params.append(param_info)
-            if required_params:
-                actions_desc += "   required parameters:\n"
-                for param_info in required_params:
-                    actions_desc += f"   - {param_info}\n"
-            if optional_params:
-                actions_desc += "   optional parameters:\n"
-                for param_info in optional_params:
-                    actions_desc += f"   - {param_info}\n"
-        actions_desc += "\n"
-    return actions_desc
-
-
 def format_action_history(history: list[dict], max_actions: int = -1) -> str:
     """
     Format action history into a readable string.
@@ -518,14 +445,6 @@ If the case does not exist or the name does not match, the entire citation is ha
 - **Verification hierarchy**:
     If a citation is already determined to be hallucinated (e.g., case does not exist or case name does not match), treat all quotes and holdings under that citation as hallucinated.
     In this case, ONLY return the citations that are hallucinated, no need to return the quotes and holdings."""
-
-    def get_design_description(self) -> str:
-        return """### Design / domain knowledge
-How to verify legal citations and detect hallucinations: 
-- BlueBook citation format, CourtListener search and opinion fetch, common hallucination types (non-existent cases, misquoted language, wrong pincites)."""
-
-    def get_classification_guidance(self) -> str:
-        return """Score each action 0.0–1.0 by how directly it gathers evidence for identifying hallucinated citations. Search and opinion actions: 0.7–0.95. THINK: 0.2–0.5."""
 
     def get_action_selection_task_section(self) -> str | None:
         return """You are verifying citations in a legal brief for hallucinations. Your uncertainty (θ) is: which citations are hallucinated (non-existent, misquoted, or wrong pincite). You reduce that uncertainty by using search and opinion actions to gather evidence; then you submit your final list of hallucinated citations."""
@@ -1150,8 +1069,6 @@ class BOEDCitationTrackerBeliefUpdatePromptConstructor(BeliefUpdatePromptConstru
         Returns:
             System prompt for belief updating
         """
-
-        _theta_def = get_canonical_theta_definition()
 
         # Build framework: canonical definition + domain-specific if available
         framework = """

@@ -255,8 +255,6 @@ class HallucinationCheckerEnvironment(Environment):
             question="", key=key, action_space=action_space, max_steps=max_steps
         )
 
-        # Potentially can pass more info here but not going to use it for now
-        self.brief_info = brief_info
         self.brief_text = brief_text
 
         # Action space is already set by parent class
@@ -426,9 +424,6 @@ class HallucinationCheckerEnvironment(Environment):
             # Create structured search results
             structured_results = []
             for i, result in enumerate(search_results):
-                # Get snippet as contents (most relevant part from Google)
-                _contents = result.snippet if hasattr(result, "snippet") else ""
-
                 # Use position from search results (lower is better)
                 # Check for web_position, google_scholar_position, or position in metadata
                 position = None
@@ -997,16 +992,6 @@ BRIEF TEXT: {self.brief_text}\n\n"""
     def get_search_capabilities(self) -> str:
         return get_search_capabilities_open_search()
 
-    def get_search_history(self) -> list[dict[str, Any]]:
-        return self.search_history.copy()
-
-    def is_done(self) -> bool:
-        if self.is_truncated():
-            return True
-
-        # Check if a final prediction was made (base class sets terminated=True)
-        return bool(self.is_terminated())
-
     def get_initial_observation(self) -> Observation:
         return self.initial_observation
 
@@ -1026,12 +1011,3 @@ BRIEF TEXT: {self.brief_text}\n\n"""
             },
         )
         logger.info("Environment reset")
-
-    def get_stats(self) -> dict[str, Any]:
-        return {
-            "current_step": self.current_step,
-            "max_steps": self.max_steps,
-            "has_answer": bool(self.answer),
-            "num_searches": len(self.search_history),
-            "is_done": self.is_done(),
-        }

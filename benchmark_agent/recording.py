@@ -86,8 +86,6 @@ class MetricsCollector:
             environment_info=environment_info or {},
             start_time=datetime.now(UTC).isoformat(),
         )
-        # Store method separately for directory structure
-        self.current_episode_method = method
         self.step_count = 0
 
         logger.info(f"Started metrics collection for episode {episode_id}")
@@ -180,9 +178,7 @@ class MetricsCollector:
         logger.info(f"Episode metrics saved to {filepath}")
 
         # Clear current episode
-        _episode_id = self.current_episode.episode_id
         self.current_episode = None
-        self.current_episode_method = None
         self.step_count = 0
 
         return str(filepath)
@@ -288,7 +284,7 @@ def log_think_action(action):
     logger.info(f"  Thought: {thought_preview}")
 
 
-def log_search_action(action, observation, action_type: str):
+def log_search_action(action, observation):
     query = getattr(action, "query", "")
     num_results = observation.metadata.get("num_results", None)
 
