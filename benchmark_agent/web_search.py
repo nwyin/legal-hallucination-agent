@@ -205,10 +205,6 @@ class SearchResult:
             random.choices(string.ascii_letters + string.digits, k=5)
         )
 
-    def __repr__(self) -> str:
-        date_str = f" ({self.published_date_raw})" if self.published_date_raw else ""
-        return f"{self.title}{date_str}\n{self.snippet}\n{self.url}"
-
     def to_dict(self) -> dict[str, Any]:
         return {
             "result_id": self.result_id,

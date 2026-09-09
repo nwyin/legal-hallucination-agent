@@ -613,8 +613,8 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             return None
 
         system_prompt = self.action_selection_prompt_constructor.get_system_prompt(
-            action_space=self._get_available_action_types(),
-            environment_description=self.environment.get_action_selection_environment_description(),
+            action_space=self.action_space.copy(),
+            environment_description=self.environment.get_environment_description(),
             search_capabilities=self.environment.get_search_capabilities(),
         )
 
@@ -691,9 +691,6 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
                 f"Action parsing failed after {self.MAX_ACTION_REASKS + 1} attempts: {e}"
             )
             return None
-
-    def _get_available_action_types(self) -> list[ActionType]:
-        return self.action_space.copy()
 
     def store_final_response(self, response: Any) -> None:
         """Record the final response as the list of predicted hallucinations.
@@ -818,7 +815,6 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             return None, None
 
     def reset(self):
-        super().reset() if hasattr(super(), "reset") else None
         self.task_beliefs = self.task_belief_prior
         self.last_action = None
         self.history = []

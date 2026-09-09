@@ -32,7 +32,6 @@ with block_network():
         Action,
         ActionType,
         get_action_class,
-        get_all_action_classes,
     )
     from benchmark_agent.environment import HallucinationCheckerEnvironment
 
@@ -59,11 +58,11 @@ def make_environment(cache_dir):
 
 @check
 def action_registry_is_complete():
-    """Every ActionType has a registered class, and the registry keeps its order."""
-    registered = [c.action_type for c in get_all_action_classes()]
-    assert set(registered) == set(ActionType), set(ActionType) ^ set(registered)
+    """Every ActionType resolves to a matching registered Action subclass."""
     for action_type in ActionType:
-        assert issubclass(get_action_class(action_type), Action)
+        action_class = get_action_class(action_type)
+        assert issubclass(action_class, Action)
+        assert action_class.action_type == action_type
     # The CourtListener search description is generated from the shared mapping.
     description = get_action_class(ActionType.OPEN_COURTLISTENER_SEARCH).description
     assert (

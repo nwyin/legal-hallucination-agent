@@ -196,10 +196,6 @@ def get_action_class(action_type: ActionType) -> type[Action]:
     return _action_registry[action_type]
 
 
-def get_all_action_classes() -> list[type[Action]]:
-    return list(_action_registry.values())
-
-
 # Search type mappings based on CourtListener API documentation. Declared here
 # because OpenCourtListenerSearch documents them; courtlistener.py imports this.
 SEARCH_TYPES = {

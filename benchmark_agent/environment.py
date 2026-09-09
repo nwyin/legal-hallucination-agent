@@ -983,9 +983,6 @@ BRIEF TEXT: {self.brief_text}\n\n"""
 
         return description
 
-    def get_action_selection_environment_description(self) -> str:
-        return self.get_environment_description()
-
     def get_response_requirements(self) -> str:
         return get_response_requirements()
 

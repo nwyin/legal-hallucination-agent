@@ -733,9 +733,7 @@ class BOEDActionSelectionPromptConstructor(ActionSelectionPromptConstructor):
         """
 
         # Optional short task section from domain (replaces long θ + domain block when set)
-        if self.domain_knowledge and hasattr(
-            self.domain_knowledge, "get_action_selection_task_section"
-        ):
+        if self.domain_knowledge:
             short_section = self.domain_knowledge.get_action_selection_task_section()
             if short_section:
                 theta_section = f"## Task\n{short_section}"
@@ -766,9 +764,7 @@ You maintain a Bayesian belief p(θ) that is updated based on observations from 
 
         # Optional task-specific action selection guidance (e.g. THINK has zero EIG, prefer search)
         action_selection_guidance = ""
-        if self.domain_knowledge and hasattr(
-            self.domain_knowledge, "get_action_selection_guidance"
-        ):
+        if self.domain_knowledge:
             guidance = self.domain_knowledge.get_action_selection_guidance()
             if guidance:
                 action_selection_guidance = f"\n\n## Task-Specific Guidance\n{guidance}"
