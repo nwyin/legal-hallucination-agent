@@ -8,32 +8,33 @@
 
 import logging
 import re
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from collections.abc import Callable
+from typing import Any
 
-from .tracing import langfuse, observe
+from pydantic import ValidationError
+
 from .actions import Action, ActionType, get_action_class
 from .environment import Environment, Observation
 from .evaluation import parse_predictions
 from .llm import ModelAPI
-from pydantic import ValidationError
-
 from .parsing import (
-    parse_action_response,
     normalize_action_parameters_for_construction,
-    parse_prediction_response,
     normalize_yes_no_answers,
+    parse_action_response,
     parse_json_from_text,
+    parse_prediction_response,
 )
 from .prompts import (
-    BeliefUpdatePromptConstructor,
     ActionSelectionPromptConstructor,
-    PredictionPromptConstructor,
-    BOEDBeliefUpdatePromptConstructor,
+    BeliefUpdatePromptConstructor,
     BOEDActionSelectionPromptConstructor,
-    BOEDPredictionPromptConstructor,
+    BOEDBeliefUpdatePromptConstructor,
     BOEDCitationTrackerBeliefUpdatePromptConstructor,
     BOEDCitationTrackerPredictionPromptConstructor,
+    BOEDPredictionPromptConstructor,
+    PredictionPromptConstructor,
 )
+from .tracing import langfuse, observe
 
 logger = logging.getLogger(__name__)
 
@@ -41,27 +42,30 @@ logger = logging.getLogger(__name__)
 # Type for prompt logging callback: (system_prompt, user_prompt, prompt_type, step) -> None
 PromptCallback = Callable[[str, str, str, int], None]
 
+
 class Agent:
     """
     Base agent class that provides common functionality for LLM-powered agents.
     """
-    
-    def __init__(self, 
-                 environment: Environment, 
-                 model_api: ModelAPI,
-                 model_id: str,
-                 max_tokens: int = 1000,
-                 temperature: float = 0.3,
-                 temperature_action_selection: float = None,
-                 seed: int = None,
-                 thinking_enabled: bool = True,
-                 open_web_search_enabled: bool = False,
-                courtlistener_search_enabled: bool = False,
-                courtlistener_opinion_access_enabled: bool = False,
-                 prompt_callback: PromptCallback = None):
+
+    def __init__(
+        self,
+        environment: Environment,
+        model_api: ModelAPI,
+        model_id: str,
+        max_tokens: int = 1000,
+        temperature: float = 0.3,
+        temperature_action_selection: float | None = None,
+        seed: int | None = None,
+        thinking_enabled: bool = True,
+        open_web_search_enabled: bool = False,
+        courtlistener_search_enabled: bool = False,
+        courtlistener_opinion_access_enabled: bool = False,
+        prompt_callback: PromptCallback = None,
+    ):
         """
         Initialize the base agent.
-        
+
         Args:
             environment: The environment to interact with
             model_api: The model API to use for LLM calls
@@ -81,7 +85,11 @@ class Agent:
         self.model_id = model_id
         self.max_tokens = max_tokens
         self.temperature = temperature
-        self.temperature_action_selection = temperature_action_selection if temperature_action_selection is not None else temperature
+        self.temperature_action_selection = (
+            temperature_action_selection
+            if temperature_action_selection is not None
+            else temperature
+        )
         self.seed = seed
         self.thinking_enabled = thinking_enabled
         self.open_web_search_enabled = open_web_search_enabled
@@ -92,65 +100,77 @@ class Agent:
         # Initialize the available agent actions from environment
         self.action_space = self.environment.action_space.copy()
         env_action_space = self.environment.action_space  # Original for validation
-        
+
         # Validate that enabled flags don't request actions the environment doesn't support
         self._validate_action_flags(env_action_space)
-        
+
         # Filter actions based on enabled flags
-        if not self.thinking_enabled:
-            if ActionType.THINK in self.action_space:
-                self.action_space.remove(ActionType.THINK)
-        
-        if not self.open_web_search_enabled:
-            if ActionType.OPEN_WEB_SEARCH in self.action_space:
-                self.action_space.remove(ActionType.OPEN_WEB_SEARCH)
-        
-        if not self.courtlistener_search_enabled:
-            if ActionType.OPEN_COURTLISTENER_SEARCH in self.action_space:
-                self.action_space.remove(ActionType.OPEN_COURTLISTENER_SEARCH)
-        
-        if not self.courtlistener_opinion_access_enabled:
-            if ActionType.ACCESS_COURTLISTENER_OPINION in self.action_space:
-                self.action_space.remove(ActionType.ACCESS_COURTLISTENER_OPINION)
-        
-        self.history: List[Dict[str, Any]] = []
+        if not self.thinking_enabled and ActionType.THINK in self.action_space:
+            self.action_space.remove(ActionType.THINK)
+
+        if (
+            not self.open_web_search_enabled
+            and ActionType.OPEN_WEB_SEARCH in self.action_space
+        ):
+            self.action_space.remove(ActionType.OPEN_WEB_SEARCH)
+
+        if (
+            not self.courtlistener_search_enabled
+            and ActionType.OPEN_COURTLISTENER_SEARCH in self.action_space
+        ):
+            self.action_space.remove(ActionType.OPEN_COURTLISTENER_SEARCH)
+
+        if (
+            not self.courtlistener_opinion_access_enabled
+            and ActionType.ACCESS_COURTLISTENER_OPINION in self.action_space
+        ):
+            self.action_space.remove(ActionType.ACCESS_COURTLISTENER_OPINION)
+
+        self.history: list[dict[str, Any]] = []
         self.current_step = 0
-        
+
         # Log final action space
         logger.info(f"Initialized agent with model: {model_id}")
         logger.info(f"Agent action space: {[a.name for a in self.action_space]}")
-    
-    def _validate_action_flags(self, env_action_space: List[ActionType]):
+
+    def _validate_action_flags(self, env_action_space: list[ActionType]):
         """
-        Validate that agent's enabled flags don't request actions 
+        Validate that agent's enabled flags don't request actions
         that the environment doesn't support.
-        
+
         Raises:
             ValueError: If agent enables an action not supported by the environment.
         """
         errors = []
         env_actions_str = [a.name for a in env_action_space]
-        
+
         if self.thinking_enabled and ActionType.THINK not in env_action_space:
+            errors.append("thinking_enabled=True but environment doesn't support THINK")
+
+        if (
+            self.open_web_search_enabled
+            and ActionType.OPEN_WEB_SEARCH not in env_action_space
+        ):
             errors.append(
-                f"thinking_enabled=True but environment doesn't support THINK"
+                "open_web_search_enabled=True but environment doesn't support OPEN_WEB_SEARCH"
             )
-        
-        if self.open_web_search_enabled and ActionType.OPEN_WEB_SEARCH not in env_action_space:
+
+        if (
+            self.courtlistener_search_enabled
+            and ActionType.OPEN_COURTLISTENER_SEARCH not in env_action_space
+        ):
             errors.append(
-                f"open_web_search_enabled=True but environment doesn't support OPEN_WEB_SEARCH"
+                "courtlistener_search_enabled=True but environment doesn't support OPEN_COURTLISTENER_SEARCH"
             )
-        
-        if self.courtlistener_search_enabled and ActionType.OPEN_COURTLISTENER_SEARCH not in env_action_space:
+
+        if (
+            self.courtlistener_opinion_access_enabled
+            and ActionType.ACCESS_COURTLISTENER_OPINION not in env_action_space
+        ):
             errors.append(
-                f"courtlistener_search_enabled=True but environment doesn't support OPEN_COURTLISTENER_SEARCH"
+                "courtlistener_opinion_access_enabled=True but environment doesn't support ACCESS_COURTLISTENER_OPINION"
             )
-        
-        if self.courtlistener_opinion_access_enabled and ActionType.ACCESS_COURTLISTENER_OPINION not in env_action_space:
-            errors.append(
-                f"courtlistener_opinion_access_enabled=True but environment doesn't support ACCESS_COURTLISTENER_OPINION"
-            )
-        
+
         if errors:
             raise ValueError(
                 f"Agent action flag mismatch with environment:\n"
@@ -159,59 +179,61 @@ class Agent:
                 f"  Fix: Either disable the flag in agent config, or add the action to the environment's action_space."
             )
 
-    def select_action(self, observation: Optional[Observation]) -> Action:
+    def select_action(self, observation: Observation | None) -> Action:
         """
         Select the next action using the LLM.
         This should be overridden by subclasses to provide specific action selection logic.
         """
         raise NotImplementedError("Subclasses must implement select_action")
-    
+
     def update_state(self, action: Action, observation: Observation):
         """
         Update the agent's internal state based on the action and observation.
         This should be overridden by subclasses to provide specific state management.
         """
         raise NotImplementedError("Subclasses must implement update_state")
-    
+
     def log_prompts(self, system_prompt: str, user_prompt: str, prompt_type: str):
         """
         Log prompts via callback if one is registered.
-        
+
         Args:
             system_prompt: The system prompt
-            user_prompt: The user prompt  
+            user_prompt: The user prompt
             prompt_type: Type of prompt (e.g., "ACTION_SELECTION", "BELIEF_UPDATE", "PREDICTION")
         """
         if self.prompt_callback:
-            self.prompt_callback(system_prompt, user_prompt, prompt_type, self.current_step + 1)
+            self.prompt_callback(
+                system_prompt, user_prompt, prompt_type, self.current_step + 1
+            )
 
 
-def extract_action_parameters(action: Any) -> Dict[str, Any]:
+def extract_action_parameters(action: Any) -> dict[str, Any]:
     """
     Extract parameters from an action using the action class `inputs` schema.
-    
+
     Args:
         action: Action instance to extract parameters from
-        
+
     Returns:
         Dictionary of parameter names to values (only non-None values)
-        
+
     Rules:
         - Include all fields defined in the `inputs` schema (required and optional)
         - For each field, read the value from the action instance when set (not None)
         - Omit fields that are unset (None) to avoid redundant defaults
     """
-    params: Dict[str, Any] = {}
-    inputs_schema = getattr(action.__class__, 'inputs', None)
+    params: dict[str, Any] = {}
+    inputs_schema = getattr(action.__class__, "inputs", None)
     if not isinstance(inputs_schema, dict):
         return params
-        
+
     for name, _spec in inputs_schema.items():
         if hasattr(action, name):
             value = getattr(action, name)
             if value is not None:
                 params[name] = value
-                
+
     return params
 
 
@@ -224,21 +246,21 @@ REASK_ERRORS = (ValueError, ValidationError, TypeError, KeyError)
 class BayesianOptimalExperimentalDesignAgent(Agent):
     """
     Bayesian Optimal Experimental Design agent with single-layer beliefs (θ only).
-    
+
     This is a task-agnostic agent that can be configured for different domains
     by injecting appropriate prompt constructors via dependency injection.
-    
+
     The agent:
     - Maintains beliefs about task parameters (θ)
     - Updates beliefs after each observation
     - Selects actions to maximize expected information gain about θ
     - Can make predictions based on accumulated beliefs
-    
+
     Unlike IDS-OED, this agent does not maintain meta-level design beliefs (D).
     """
 
     MAX_ACTION_REASKS = 3
-    
+
     def __init__(
         self,
         environment: Environment,
@@ -246,7 +268,7 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
         model_id: str,
         max_tokens: int = 2000,
         temperature: float = 0.7,
-        seed: int = None,
+        seed: int | None = None,
         thinking_enabled: bool = True,
         open_web_search_enabled: bool = False,
         courtlistener_search_enabled: bool = False,
@@ -255,13 +277,13 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
         belief_update_prompt_constructor: BeliefUpdatePromptConstructor = None,
         action_selection_prompt_constructor: ActionSelectionPromptConstructor = None,
         prediction_prompt_constructor: PredictionPromptConstructor = None,
-        max_tokens_config: Optional[Dict[str, int]] = None,
-        belief_update_model_id: Optional[str] = None,
-        belief_update_temperature: Optional[float] = None,
+        max_tokens_config: dict[str, int] | None = None,
+        belief_update_model_id: str | None = None,
+        belief_update_temperature: float | None = None,
     ):
         """
         Initialize the BOED agent.
-        
+
         Args:
             environment: The environment to interact with
             model_api: API for making LLM calls
@@ -292,17 +314,17 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             courtlistener_search_enabled=courtlistener_search_enabled,
             courtlistener_opinion_access_enabled=courtlistener_opinion_access_enabled,
         )
-        
+
         # Initialize beliefs
         self.task_beliefs = task_belief_prior
         self.task_belief_prior = task_belief_prior
-        
+
         # For tasks that output a list (e.g. hallucination checker), store the raw list
-        self.last_final_response_list: Optional[List[str]] = None
-        
+        self.last_final_response_list: list[str] | None = None
+
         # Environment description for prompts
         self.environment_description = self.environment.get_environment_description()
-        
+
         # Prompt constructors - default to method-specific constructors if not injected
         if belief_update_prompt_constructor is None:
             logger.warning(
@@ -323,7 +345,8 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             belief_update_prompt_constructor or BOEDBeliefUpdatePromptConstructor()
         )
         self.action_selection_prompt_constructor = (
-            action_selection_prompt_constructor or BOEDActionSelectionPromptConstructor()
+            action_selection_prompt_constructor
+            or BOEDActionSelectionPromptConstructor()
         )
         self.prediction_prompt_constructor = (
             prediction_prompt_constructor or BOEDPredictionPromptConstructor()
@@ -331,20 +354,22 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
         self.max_tokens_config = max_tokens_config or {}
         self.belief_update_model_id = belief_update_model_id or self.model_id
         self.belief_update_temperature = (
-            self.temperature if belief_update_temperature is None else belief_update_temperature
+            self.temperature
+            if belief_update_temperature is None
+            else belief_update_temperature
         )
-        
+
         # Track last action for belief updates
         self.last_action = None
-        
-        logger.info(f"Initialized BayesianOptimalExperimentalDesignAgent")
+
+        logger.info("Initialized BayesianOptimalExperimentalDesignAgent")
         logger.info(f"Environment: {self.environment.__class__.__name__}")
 
     def _call_with_reask(
         self,
-        messages: List[Dict[str, str]],
-        parse: Callable[[Optional[str]], Any],
-        reask: Union[str, Callable[[Exception, Optional[str]], str]],
+        messages: list[dict[str, str]],
+        parse: Callable[[str | None], Any],
+        reask: str | Callable[[Exception, str | None], str],
         attempts: int,
         **model_kwargs,
     ) -> Any:
@@ -364,44 +389,60 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
                 return parse(response)
             except REASK_ERRORS as e:
                 with langfuse.start_as_current_observation(
-                    name="validate-model-response", input=response,
-                    output={"error": str(e), "attempt": attempt + 1, "exhausted": attempt + 1 == attempts},
+                    name="validate-model-response",
+                    input=response,
+                    output={
+                        "error": str(e),
+                        "attempt": attempt + 1,
+                        "exhausted": attempt + 1 == attempts,
+                    },
                     level="WARNING",
                 ):
                     pass
                 logger.warning(
                     "Model response could not be used (attempt %s/%s): %s. Response: %r",
-                    attempt + 1, attempts, e, response,
+                    attempt + 1,
+                    attempts,
+                    e,
+                    response,
                 )
                 if attempt + 1 == attempts:
                     raise
-                conversation = messages + [
+                conversation = [
+                    *messages,
                     {"role": "assistant", "content": response or ""},
-                    {"role": "user", "content": reask(e, response) if callable(reask) else reask},
+                    {
+                        "role": "user",
+                        "content": reask(e, response) if callable(reask) else reask,
+                    },
                 ]
 
     @observe(name="update-beliefs", capture_input=False)
     def update_beliefs(self, observation: Observation, action: Action) -> str:
         """
         Update task-level beliefs based on the observation.
-        
+
         Args:
             observation: The observation from the last action
             action: The action that produced the observation
-            
+
         Returns:
             String representation of updated beliefs
         """
-        langfuse.update_current_span(input=str(observation), metadata={"step": self.current_step})
+        langfuse.update_current_span(
+            input=str(observation), metadata={"step": self.current_step}
+        )
         # Skip belief update for initial observation (no action taken yet)
         if not observation or not observation.metadata or action is None:
-            logger.info("Skipping belief update for initial observation (no action taken yet)")
+            logger.info(
+                "Skipping belief update for initial observation (no action taken yet)"
+            )
             return f"Task Beliefs: {self.task_beliefs}"
-        
+
         if self.belief_update_prompt_constructor is None:
             logger.warning("No belief update prompt constructor configured")
             return f"Task Beliefs: {self.task_beliefs}"
-        
+
         # Build prompts
         system_prompt = self.belief_update_prompt_constructor.get_system_prompt(
             environment_description=self.environment_description
@@ -412,22 +453,27 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             action_type=action.action_type.value,
             action_parameters=extract_action_parameters(action),
         )
-        
+
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
+            {"role": "user", "content": user_prompt},
         ]
-        
-        belief_update_max_tokens = self.max_tokens_config.get('belief_update', self.max_tokens)
+
+        belief_update_max_tokens = self.max_tokens_config.get(
+            "belief_update", self.max_tokens
+        )
         max_belief_update_attempts = 3
 
-        def non_empty(response: Optional[str]) -> str:
+        def non_empty(response: str | None) -> str:
             text = str(response).strip() if response is not None else ""
             if not text:
                 raise ValueError("empty belief-update response")
             return text
 
-        logger.info("Calling LLM for BOED belief update using model=%s", self.belief_update_model_id)
+        logger.info(
+            "Calling LLM for BOED belief update using model=%s",
+            self.belief_update_model_id,
+        )
         try:
             updated_beliefs = self._call_with_reask(
                 messages,
@@ -448,20 +494,20 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             ) from e
 
         logger.info(f"LLM belief update response: {updated_beliefs}")
-        
+
         # Parse task beliefs from response
         self._parse_belief_update(updated_beliefs)
-        
+
         logger.info(f"Updated task beliefs: {self.task_beliefs}")
-        
+
         return f"Task Beliefs: {self.task_beliefs}"
-    
+
     # Markers after which the task beliefs text starts, tried in order:
     # markdown heading, bold label, plain label with colon.
     _TASK_BELIEFS_MARKERS = (
-        r"(?:^|\n)#+\s*Task\s*Beliefs[^\n]*\n",              # ### Task Beliefs ...
+        r"(?:^|\n)#+\s*Task\s*Beliefs[^\n]*\n",  # ### Task Beliefs ...
         r"(?:^|\n)\s*\*\*\s*Task\s*Beliefs[^\n]*\*\*\s*\n",  # **Task Beliefs:** ...
-        r"Task\s*Beliefs\s*:\s*",                            # Task Beliefs: ...
+        r"Task\s*Beliefs\s*:\s*",  # Task Beliefs: ...
     )
 
     def _parse_belief_update(self, text: str) -> None:
@@ -470,7 +516,7 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
         for marker in self._TASK_BELIEFS_MARKERS:
             match = re.search(marker, text, flags=re.IGNORECASE)
             if match:
-                task_section = text[match.end():].strip()
+                task_section = text[match.end() :].strip()
                 break
 
         # Try JSON format: {"task_beliefs": ...}
@@ -486,54 +532,64 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
                         task_section = str(task_raw) if task_raw else None
             except Exception:
                 pass
-        
+
         # Assign parsed section or fall back to full text
         if task_section is not None:
             self.task_beliefs = task_section
         else:
             if not text.strip():
-                logger.warning("Empty belief update response from LLM, keeping previous beliefs")
+                logger.warning(
+                    "Empty belief update response from LLM, keeping previous beliefs"
+                )
             else:
                 # Use full response as task beliefs
                 self.task_beliefs = text
-    
+
     @observe(name="select-action", capture_input=False, capture_output=False)
-    def select_action(self, observation: Optional[Observation]) -> Action:
+    def select_action(self, observation: Observation | None) -> Action:
         """
         Select the next action using the BOED framework.
-        
+
         Chooses actions that maximize expected information gain over task parameters (θ).
         On the final step, uses the prediction prompt (get_current_prediction) to force PROVIDE_FINAL_RESPONSE.
-        
+
         Args:
             observation: Current observation (None for initial state)
-            
+
         Returns:
             The selected action
         """
-        langfuse.update_current_span(input=str(observation), metadata={"step": self.current_step + 1})
+        langfuse.update_current_span(
+            input=str(observation), metadata={"step": self.current_step + 1}
+        )
         logger.info(f"BOED action selection (attempting step {self.current_step + 1})")
-        
+
         # Step 1: Update beliefs based on current observation
         if observation:
             self.update_beliefs(observation, self.last_action)
-        
+
         # Check if this is the final step - if so, use prediction prompt to force PROVIDE_FINAL_RESPONSE
         is_final_step = (self.current_step + 1) >= self.environment.max_steps
-        
+
         if is_final_step:
-            logger.info("Final step reached - using prediction prompt to force PROVIDE_FINAL_RESPONSE")
+            logger.info(
+                "Final step reached - using prediction prompt to force PROVIDE_FINAL_RESPONSE"
+            )
             max_prediction_retries = 3
-            prediction, confidence = None, None
+            prediction, _confidence = None, None
             for attempt in range(max_prediction_retries):
-                prediction, confidence = self.get_current_prediction()
+                prediction, _confidence = self.get_current_prediction()
                 is_valid = prediction is not None and (
-                    (prediction if isinstance(prediction, str) else str(prediction)).strip()
+                    (
+                        prediction if isinstance(prediction, str) else str(prediction)
+                    ).strip()
                     and not (isinstance(prediction, list) and len(prediction) == 0)
                 )
                 if is_valid:
                     break
-                logger.warning(f"Final response empty or invalid (attempt {attempt + 1}/{max_prediction_retries}), retrying...")
+                logger.warning(
+                    f"Final response empty or invalid (attempt {attempt + 1}/{max_prediction_retries}), retrying..."
+                )
             # Store list for evaluation (handles JSON array strings and plain text)
             self.store_final_response(prediction)
             # Create PROVIDE_FINAL_RESPONSE action from prediction
@@ -552,30 +608,38 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             # Increment step counter after successful parsing
             self.current_step += 1
             self.last_action = action
-            logger.info(f"Selected action: {action.action_type.value} (step {self.current_step})")
-            langfuse.update_current_span(output={
-                "action_type": action.action_type.value,
-                "parameters": action.get_input_parameters(),
-            })
+            logger.info(
+                f"Selected action: {action.action_type.value} (step {self.current_step})"
+            )
+            langfuse.update_current_span(
+                output={
+                    "action_type": action.action_type.value,
+                    "parameters": action.get_input_parameters(),
+                }
+            )
         else:
-            langfuse.update_current_span(level="ERROR", status_message="Action selection returned no action")
-        
+            langfuse.update_current_span(
+                level="ERROR", status_message="Action selection returned no action"
+            )
+
         return action
-    
-    def _build_action_selection_prompts(self, observation: Optional[Observation]) -> Optional[List[Dict[str, str]]]:
+
+    def _build_action_selection_prompts(
+        self, observation: Observation | None
+    ) -> list[dict[str, str]] | None:
         """
         Build prompts for action selection.
-        
+
         Args:
             observation: Current observation (None for initial state)
-            
+
         Returns:
             List of message dictionaries for LLM call, or None if constructor not configured
         """
         if self.action_selection_prompt_constructor is None:
             logger.error("No action selection prompt constructor configured")
             return None
-        
+
         system_prompt = self.action_selection_prompt_constructor.get_system_prompt(
             action_space=self._get_available_action_types(),
             environment_description=self.environment.get_action_selection_environment_description(),
@@ -591,13 +655,15 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             task_instance_description="",
             response_requirements=self.environment.get_response_requirements(),
         )
-        
+
         return [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
+            {"role": "user", "content": user_prompt},
         ]
-    
-    def _call_llm_for_action_selection(self, messages: List[Dict[str, str]]) -> Optional[Action]:
+
+    def _call_llm_for_action_selection(
+        self, messages: list[dict[str, str]]
+    ) -> Action | None:
         """
         Call the LLM for action selection and parse the response into an Action.
 
@@ -608,9 +674,11 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             Parsed Action object, or None if every attempt fails
         """
         logger.info("Calling LLM for BOED action selection")
-        action_selection_max_tokens = self.max_tokens_config.get('action_selection', self.max_tokens)
+        action_selection_max_tokens = self.max_tokens_config.get(
+            "action_selection", self.max_tokens
+        )
 
-        def parse_action(response: Optional[str]) -> Action:
+        def parse_action(response: str | None) -> Action:
             action_type, parameters = parse_action_response(response)
             if ActionType(action_type) not in self.action_space:
                 raise ValueError(
@@ -621,10 +689,12 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
                 self.store_final_response(parameters.get("response"))
             else:
                 self.last_final_response_list = None
-            parameters = normalize_action_parameters_for_construction(action_type, parameters)
+            parameters = normalize_action_parameters_for_construction(
+                action_type, parameters
+            )
             return get_action_class(ActionType(action_type))(**parameters)
 
-        def reask(error: Exception, response: Optional[str]) -> str:
+        def reask(error: Exception, response: str | None) -> str:
             return (
                 "Your previous response was not a valid action. Error:\n"
                 f"{error}\n\n"
@@ -645,12 +715,14 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
                 seed=self.seed,
             )
         except REASK_ERRORS as e:
-            logger.error(f"Action parsing failed after {self.MAX_ACTION_REASKS + 1} attempts: {e}")
+            logger.error(
+                f"Action parsing failed after {self.MAX_ACTION_REASKS + 1} attempts: {e}"
+            )
             return None
 
-    def _get_available_action_types(self) -> List[ActionType]:
+    def _get_available_action_types(self) -> list[ActionType]:
         return self.action_space.copy()
-    
+
     def store_final_response(self, response: Any) -> None:
         """Record the final response as the list of predicted hallucinations.
 
@@ -662,30 +734,34 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
     def update_state(self, action: Action, observation: Observation):
         """
         Update the agent's internal state based on the action and observation.
-        
+
         Args:
             action: The action that was taken
             observation: The resulting observation
         """
-        self.history.append({
-            'step': self.current_step,
-            'action': action,
-            'observation': observation,
-            'task_beliefs': self.task_beliefs
-        })
-        logger.info(f"Updated state - Step {self.current_step}: {action.action_type.value}")
-    
-    def get_current_beliefs(self) -> Dict[str, str]:
+        self.history.append(
+            {
+                "step": self.current_step,
+                "action": action,
+                "observation": observation,
+                "task_beliefs": self.task_beliefs,
+            }
+        )
+        logger.info(
+            f"Updated state - Step {self.current_step}: {action.action_type.value}"
+        )
+
+    def get_current_beliefs(self) -> dict[str, str]:
         return {
-            'task_beliefs': self.task_beliefs,
-            'design_beliefs': ''  # Empty for BOED - only has task beliefs
+            "task_beliefs": self.task_beliefs,
+            "design_beliefs": "",  # Empty for BOED - only has task beliefs
         }
-    
+
     @observe(name="predict-hallucinations", capture_input=False)
-    def get_current_prediction(self) -> Tuple[Optional[str], Optional[float]]:
+    def get_current_prediction(self) -> tuple[str | None, float | None]:
         """
         Get the agent's current best prediction based on accumulated beliefs.
-        
+
         Returns:
             Tuple of (prediction, confidence) where confidence is 0.0-1.0
         """
@@ -717,13 +793,20 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
                 history=self.history,
                 max_steps=max_steps,
             )
-            
-            prompt = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
-            langfuse.update_current_span(input=prompt, metadata={"step": self.current_step})
-            
+
+            prompt = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ]
+            langfuse.update_current_span(
+                input=prompt, metadata={"step": self.current_step}
+            )
+
             # Get prediction from the agent's own model; re-ask once if the
             # response cannot be parsed.
-            prediction_max_tokens = self.max_tokens_config.get('prediction', self.max_tokens)
+            prediction_max_tokens = self.max_tokens_config.get(
+                "prediction", self.max_tokens
+            )
             try:
                 prediction, confidence = self._call_with_reask(
                     prompt,
@@ -740,7 +823,10 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
                     seed=self.seed,
                 )
             except REASK_ERRORS:
-                langfuse.update_current_span(level="ERROR", status_message="Prediction parsing failed after retry")
+                langfuse.update_current_span(
+                    level="ERROR",
+                    status_message="Prediction parsing failed after retry",
+                )
                 return None, None
 
             # Normalize Yes/No answers if applicable
@@ -749,16 +835,18 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             except ValueError:
                 logger.warning(f"Could not normalize prediction format: {prediction}")
 
-            logger.info(f"Current prediction: {prediction} (confidence: {confidence:.3f})")
+            logger.info(
+                f"Current prediction: {prediction} (confidence: {confidence:.3f})"
+            )
             return prediction, confidence
-                
+
         except Exception as e:
             logger.error(f"Error getting current prediction: {e}")
             langfuse.update_current_span(level="ERROR", status_message=type(e).__name__)
             return None, None
-    
+
     def reset(self):
-        super().reset() if hasattr(super(), 'reset') else None
+        super().reset() if hasattr(super(), "reset") else None
         self.task_beliefs = self.task_belief_prior
         self.last_action = None
         self.history = []
@@ -785,7 +873,7 @@ class BOEDCitationTrackerAgent(BayesianOptimalExperimentalDesignAgent):
         model_id: str,
         max_tokens: int = 2000,
         temperature: float = 0.7,
-        seed: int = None,
+        seed: int | None = None,
         thinking_enabled: bool = True,
         open_web_search_enabled: bool = False,
         courtlistener_search_enabled: bool = False,
@@ -794,15 +882,24 @@ class BOEDCitationTrackerAgent(BayesianOptimalExperimentalDesignAgent):
         belief_update_prompt_constructor: BeliefUpdatePromptConstructor = None,
         action_selection_prompt_constructor: ActionSelectionPromptConstructor = None,
         prediction_prompt_constructor: PredictionPromptConstructor = None,
-        max_tokens_config: Optional[Dict[str, int]] = None,
-        belief_update_model_id: Optional[str] = None,
-        belief_update_temperature: Optional[float] = None,
+        max_tokens_config: dict[str, int] | None = None,
+        belief_update_model_id: str | None = None,
+        belief_update_temperature: float | None = None,
     ):
         # No domain knowledge; use prior that asks for list described in words
         no_domain = None
-        belief_constructor = belief_update_prompt_constructor or BOEDCitationTrackerBeliefUpdatePromptConstructor(no_domain)
-        action_constructor = action_selection_prompt_constructor or BOEDActionSelectionPromptConstructor(no_domain)
-        pred_constructor = prediction_prompt_constructor or BOEDCitationTrackerPredictionPromptConstructor(no_domain)
+        belief_constructor = (
+            belief_update_prompt_constructor
+            or BOEDCitationTrackerBeliefUpdatePromptConstructor(no_domain)
+        )
+        action_constructor = (
+            action_selection_prompt_constructor
+            or BOEDActionSelectionPromptConstructor(no_domain)
+        )
+        pred_constructor = (
+            prediction_prompt_constructor
+            or BOEDCitationTrackerPredictionPromptConstructor(no_domain)
+        )
 
         super().__init__(
             environment=environment,
@@ -826,4 +923,3 @@ class BOEDCitationTrackerAgent(BayesianOptimalExperimentalDesignAgent):
         logger.info(
             "Initialized BOEDCitationTrackerAgent (no domain knowledge; task list in words)"
         )
-        

@@ -1,7 +1,6 @@
 """Document manager: fetched opinion text for READ_DOCUMENT and the agent's scratchpad."""
 
 import logging
-from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -10,8 +9,8 @@ class DocumentManager:
     """Holds fetched opinions by document id ("opinion_<id>") and the scratchpad entries."""
 
     def __init__(self):
-        self.documents: Dict[str, str] = {}
-        self.scratchpad: List[str] = []
+        self.documents: dict[str, str] = {}
+        self.scratchpad: list[str] = []
 
     def reset(self) -> None:
         self.documents.clear()
@@ -24,7 +23,7 @@ class DocumentManager:
         logger.info(f"Registered opinion for READ_DOCUMENT: {doc_id}")
         return doc_id
 
-    def resolve_document_id(self, document_id: str) -> Optional[str]:
+    def resolve_document_id(self, document_id: str) -> str | None:
         """Accept "opinion_9001448" or "9001448"; return the stored key or None."""
         if document_id in self.documents:
             return document_id
@@ -32,7 +31,9 @@ class DocumentManager:
             return f"opinion_{document_id}"
         return None
 
-    def edit_scratchpad(self, operation: str, content: str, position: Optional[int] = None) -> bool:
+    def edit_scratchpad(
+        self, operation: str, content: str, position: int | None = None
+    ) -> bool:
         """Apply append / insert / replace / clear; returns False on an invalid request."""
         if operation == "append":
             self.scratchpad.append(content)
@@ -58,7 +59,9 @@ class DocumentManager:
         return "\n".join(self.scratchpad)
 
 
-def read_document_content(doc_content: str, start_line: int, num_lines: int) -> Tuple[str, int, int, int]:
+def read_document_content(
+    doc_content: str, start_line: int, num_lines: int
+) -> tuple[str, int, int, int]:
     """Return (text, start, end, total_lines) for the line window [start_line, start_line + num_lines)."""
     lines = doc_content.split("\n")
     start = max(0, start_line)

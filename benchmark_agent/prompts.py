@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
 
 from .actions import ActionType, get_action_class
 
@@ -21,54 +21,52 @@ logger = logging.getLogger(__name__)
 class DomainKnowledgeProvider(ABC):
     """
     Abstract base class for providing task-family specific knowledge about D and θ.
-    
+
     Each task family (legal judgment, forecasting, theorem proving, etc.) should
     have a concrete implementation that provides:
     - What θ (task parameters) means for this task family
     - What D (design effectiveness) means for this task family
     - Optional examples and guidance specific to the domain
-    
+
     This knowledge is injected into prompts to help the agent understand
     what information to gather and how to reason about uncertainty.
     """
-    
+
     @abstractmethod
     def get_theta_description(self) -> str:
         """
         Get the description of θ (task parameters) for this task family.
-        
+
         Returns:
             A description of what task-instance-specific information the agent
             should gather to make accurate predictions.
         """
-        pass
-    
+
     @abstractmethod
     def get_design_description(self) -> str:
         """
         Get the description of D (design effectiveness) for this task family.
-        
+
         Returns:
             A description of meta-level knowledge about strategies, heuristics,
             and sources that improve performance across tasks of this type.
         """
-        pass
-    
-    def get_action_selection_guidance(self) -> Optional[str]:
+
+    def get_action_selection_guidance(self) -> str | None:
         """
         Optional task-specific guidance for action selection (e.g. which actions
         yield information gain, how to avoid unproductive loops).
-        
+
         Returns:
             Guidance string to inject into the action selection prompt, or None to skip.
         """
         return None
 
-    def get_action_selection_task_section(self) -> Optional[str]:
+    def get_action_selection_task_section(self) -> str | None:
         """
         Optional short task/domain block for action selection. If provided, replaces
         the default θ + domain definition block so the prompt stays concise.
-        
+
         Returns:
             A brief "task and domain" section (e.g. 2–5 lines), or None to use default.
         """
@@ -77,13 +75,13 @@ class DomainKnowledgeProvider(ABC):
     def get_belief_framework_description(self) -> str:
         """
         Get the full belief framework description combining D and θ.
-        
+
         Returns:
             Formatted string describing the two belief layers.
         """
         theta_desc = self.get_theta_description()
         design_desc = self.get_design_description()
-        
+
         description = f"""## Belief Framework
 You maintain beliefs over two kinds of uncertainty:
 
@@ -93,117 +91,111 @@ You maintain beliefs over two kinds of uncertainty:
 
 The boundary between design parameters (D) and task parameters (θ) is sometimes blurry. 
 Some information can inform both belief spaces."""
-        
+
         return description
 
 
 class BeliefUpdatePromptConstructor(ABC):
     """
     Abstract base class for constructing belief update prompts.
-    
+
     Belief update prompts are used after each action-observation pair to
     update the agent's beliefs about θ and/or D.
     """
-    
+
     @abstractmethod
     def get_system_prompt(self, **kwargs) -> str:
         """
         Get the system prompt for belief updating.
-        
+
         Args:
             **kwargs: Implementation-specific arguments (e.g., environment_description)
-            
+
         Returns:
             The system prompt string.
         """
-        pass
-    
+
     @abstractmethod
     def get_user_prompt(self, **kwargs) -> str:
         """
         Get the user prompt for belief updating.
-        
+
         Args:
-            **kwargs: Implementation-specific arguments (e.g., previous_beliefs, 
+            **kwargs: Implementation-specific arguments (e.g., previous_beliefs,
                      observation, action)
-            
+
         Returns:
             The user prompt string.
         """
-        pass
 
 
 class ActionSelectionPromptConstructor(ABC):
     """
     Abstract base class for constructing action selection prompts.
-    
+
     Action selection prompts guide the agent to choose the next action
     based on current beliefs, history, and the EIG objective.
     """
-    
+
     @abstractmethod
-    def get_system_prompt(self, action_space: List[ActionType], **kwargs) -> str:
+    def get_system_prompt(self, action_space: list[ActionType], **kwargs) -> str:
         """
         Get the system prompt for action selection.
-        
+
         Args:
             action_space: List of available action types
             **kwargs: Implementation-specific arguments
-            
+
         Returns:
             The system prompt string.
         """
-        pass
-    
+
     @abstractmethod
-    def get_user_prompt(self, observation: Optional[Observation], **kwargs) -> str:
+    def get_user_prompt(self, observation: Observation | None, **kwargs) -> str:
         """
         Get the user prompt for action selection.
-        
+
         Args:
             observation: Current observation (may be None for initial state)
             **kwargs: Implementation-specific arguments (e.g., history, beliefs)
-            
+
         Returns:
             The user prompt string.
         """
-        pass
 
 
 class PredictionPromptConstructor(ABC):
     """
     Abstract base class for constructing prediction prompts.
-    
+
     Prediction prompts are used to query the agent's current best prediction
     based on accumulated beliefs and evidence.
     """
-    
+
     @abstractmethod
     def get_system_prompt(self, **kwargs) -> str:
         """
         Get the system prompt for prediction.
-        
+
         Args:
             **kwargs: Implementation-specific arguments
-            
+
         Returns:
             The system prompt string.
         """
-        pass
-    
+
     @abstractmethod
     def get_user_prompt(self, **kwargs) -> str:
         """
         Get the user prompt for prediction.
-        
+
         Args:
             **kwargs: Implementation-specific arguments (e.g., current_beliefs,
                      task_description)
-            
+
         Returns:
             The user prompt string.
         """
-        pass
 
 
 # --- Shared prompt formatting helpers ---
@@ -212,9 +204,9 @@ class PredictionPromptConstructor(ABC):
 def get_canonical_theta_definition() -> str:
     """
     Get the canonical definition of task parameters (θ).
-    
+
     This is the shared definition used consistently across all prompts.
-    
+
     Returns:
         Canonical definition string for θ
     """
@@ -224,26 +216,26 @@ def get_canonical_theta_definition() -> str:
     )
 
 
-def build_action_guidelines(action_space: List[ActionType]) -> str:
+def build_action_guidelines(action_space: list[ActionType]) -> str:
     """
     Build action guidelines based on available actions.
-    
+
     Includes action descriptions and additional guidance for specific action types
     (e.g., search actions) when they are present.
-    
+
     Args:
         action_space: List of available action types
-        
+
     Returns:
         Formatted string with action guidelines
     """
     guidelines = ["## Action Guidelines"]
-    
+
     for action_type in action_space:
         try:
             action_class = get_action_class(action_type)
-            description = getattr(action_class, 'description', '')
-            
+            description = getattr(action_class, "description", "")
+
             # Warn if description is missing - this will cause suboptimal agent behavior
             if not description:
                 logger.warning(
@@ -251,10 +243,12 @@ def build_action_guidelines(action_space: List[ActionType]) -> str:
                     f"does not have a 'description' attribute defined. This will cause suboptimal "
                     f"agent behavior as the agent won't understand what this action does."
                 )
-                description = f"[WARNING: No description defined for {action_type.value}]"
-            
+                description = (
+                    f"[WARNING: No description defined for {action_type.value}]"
+                )
+
             # Warn if inputs are missing - this will also cause issues
-            if not hasattr(action_class, 'inputs') or not action_class.inputs:
+            if not hasattr(action_class, "inputs") or not action_class.inputs:
                 logger.warning(
                     f"Action class {action_class.__name__} (action_type={action_type.value}) "
                     f"does not have 'inputs' defined. This will cause suboptimal agent behavior "
@@ -266,78 +260,82 @@ def build_action_guidelines(action_space: List[ActionType]) -> str:
                 f"This will cause suboptimal agent behavior."
             )
             description = f"[WARNING: Action class not found for {action_type.value}]"
-        
+
         guidelines.append(f"- **{action_type.name}**: {description}")
-    
+
     # Add detailed guidance for search actions if present
     if ActionType.OPEN_WEB_SEARCH in action_space:
         guidelines.append("")
         guidelines.append("**About OPEN_WEB_SEARCH:**")
-        guidelines.append("- OPEN_WEB_SEARCH performs Google search on the open internet (web, news, and Google Scholar). Use this to find current information, news, scholarly articles, and web content.")
+        guidelines.append(
+            "- OPEN_WEB_SEARCH performs Google search on the open internet (web, news, and Google Scholar). Use this to find current information, news, scholarly articles, and web content."
+        )
     if ActionType.COURTLISTENER_CITATION_LOOKUP in action_space:
         guidelines.append("")
         guidelines.append("**About COURTLISTENER_CITATION_LOOKUP:**")
-        guidelines.append("- For reporter-style citations (e.g. '965 F.2d 962', '143 S. Ct. 1196'), use **COURTLISTENER_CITATION_LOOKUP** first with the `cite` parameter. Use OPEN_COURTLISTENER_SEARCH only if citation lookup fails or you have only a case name.")
-    
+        guidelines.append(
+            "- For reporter-style citations (e.g. '965 F.2d 962', '143 S. Ct. 1196'), use **COURTLISTENER_CITATION_LOOKUP** first with the `cite` parameter. Use OPEN_COURTLISTENER_SEARCH only if citation lookup fails or you have only a case name."
+        )
+
     return "\n".join(guidelines)
 
 
-def create_selection_actions_description(action_space: List[ActionType]) -> str:
+def create_selection_actions_description(action_space: list[ActionType]) -> str:
     """
     Create a description of all available actions with type, description, and input parameters.
-    
+
     Args:
         action_space: List of available action types
-        
+
     Returns:
         Formatted string describing available actions
     """
     actions_desc = "You must select an action from the following list and provide the parameters for the selected action:\n"
-    
+
     for i, action_type in enumerate(action_space):
         action_class = get_action_class(action_type)
-        
+
         if action_class:
             actions_desc += f"{i}. action: {action_class.action_type.value} - {action_class.description}\n"
-            
+
             if action_class.inputs:
                 required_params = []
                 optional_params = []
-                
+
                 for param_name, param_spec in action_class.inputs.items():
-                    param_type = param_spec.get('type', 'string')
-                    param_description = param_spec.get('description', '')
-                    is_required = param_spec.get('required', True)
-                    
+                    param_type = param_spec.get("type", "string")
+                    param_description = param_spec.get("description", "")
+                    is_required = param_spec.get("required", True)
+
                     param_info = f"{param_name} ({param_type}): {param_description}"
-                    
+
                     if is_required:
                         required_params.append(param_info)
                     else:
                         optional_params.append(param_info)
-                
+
                 if required_params:
                     actions_desc += "   required parameters:\n"
                     for param_info in required_params:
                         actions_desc += f"   - {param_info}\n"
-                
+
                 if optional_params:
                     actions_desc += "   optional parameters:\n"
                     for param_info in optional_params:
                         actions_desc += f"   - {param_info}\n"
             actions_desc += "\n"
-    
+
     return actions_desc
 
 
-def create_actions_parameters_description(action_space: List[ActionType]) -> str:
+def create_actions_parameters_description(action_space: list[ActionType]) -> str:
     """
     Create a description of available actions listing type, description,
     and input parameters (required and optional), without instruction text.
-    
+
     Args:
         action_space: List of available action types
-        
+
     Returns:
         Formatted string describing actions and parameters
     """
@@ -351,9 +349,9 @@ def create_actions_parameters_description(action_space: List[ActionType]) -> str
             required_params = []
             optional_params = []
             for param_name, param_spec in action_class.inputs.items():
-                param_type = param_spec.get('type', 'string')
-                param_description = param_spec.get('description', '')
-                is_required = param_spec.get('required', True)
+                param_type = param_spec.get("type", "string")
+                param_description = param_spec.get("description", "")
+                is_required = param_spec.get("required", True)
                 param_info = f"{param_name} ({param_type}): {param_description}"
                 if is_required:
                     required_params.append(param_info)
@@ -371,68 +369,72 @@ def create_actions_parameters_description(action_space: List[ActionType]) -> str
     return actions_desc
 
 
-def format_action_history(history: List[Dict], max_actions: int = -1) -> str:
+def format_action_history(history: list[dict], max_actions: int = -1) -> str:
     """
     Format action history into a readable string.
-    
+
     Args:
         history: List of action-observation history entries
-        
+
     Returns:
         Formatted string of recent action history
     """
     if not history:
         return ""
-    
+
     history_to_render = history
     if max_actions is not None and max_actions > 0:
         history_to_render = history[-max_actions:]
 
     history_text = "RECENT ACTIONS:\n"
     for i, step in enumerate(history_to_render):
-        action = step['action']
-        obs = step['observation']
-        
+        action = step["action"]
+        obs = step["observation"]
+
         action_type = action.action_type.value
         parameters = action.get_input_parameters()
-        
-        history_text += f"Step {i+1}: {action_type}\n"
+
+        history_text += f"Step {i + 1}: {action_type}\n"
         history_text += f"Parameters: {parameters}\n"
-        
+
         result_text = format_observation_result(obs.result)
         history_text += f"Result: {result_text}\n\n"
-    
+
     return history_text
 
 
 def format_observation_result(result: Any) -> str:
     """
     Format observation result into a readable string.
-    
+
     Args:
         result: The observation result (string, dict, or other)
-        
+
     Returns:
         Formatted string representation
     """
     if isinstance(result, str):
         return result[:200] + "..." if len(result) > 200 else result
     elif isinstance(result, dict):
-        if 'count' in result:
+        if "count" in result:
             result_text = f"Found {result['count']} results"
-            if 'results' in result and result['results']:
-                if 'snippet' in result['results'][0]:
+            if result.get("results"):
+                if "snippet" in result["results"][0]:
                     result_text += f" (showing snippets of first {result.get('snippets_shown', len(result['results']))} results)"
-                    for i, result_item in enumerate(result['results'][:3]):
-                        case_name = result_item.get('case_name', f'Case {i}')
-                        snippet = result_item.get('snippet', '')[:100] + "..." if len(result_item.get('snippet', '')) > 100 else result_item.get('snippet', '')
+                    for i, result_item in enumerate(result["results"][:3]):
+                        case_name = result_item.get("case_name", f"Case {i}")
+                        snippet = (
+                            result_item.get("snippet", "")[:100] + "..."
+                            if len(result_item.get("snippet", "")) > 100
+                            else result_item.get("snippet", "")
+                        )
                         result_text += f"\n- {case_name}: {snippet}"
                 else:
-                    for i, result_item in enumerate(result['results'][:3]):
-                        case_name = result_item.get('case_name', f'Case {i}')
+                    for i, result_item in enumerate(result["results"][:3]):
+                        case_name = result_item.get("case_name", f"Case {i}")
                         result_text += f"\n- {case_name}"
             return result_text
-        elif 'error' in result:
+        elif "error" in result:
             return f"Error: {result['error']}"
         else:
             return str(result)[:200] + "..."
@@ -444,7 +446,7 @@ def create_action_selection_json_format() -> str:
     """
     Create JSON format instructions for action selection prompts.
     Includes reasoning field to encourage explicit reasoning.
-    
+
     Returns:
         Formatted string with action selection JSON format
     """
@@ -469,12 +471,12 @@ Provide your action selection as a JSON object:
 class LegalHallucinationCheckerDomainKnowledge(DomainKnowledgeProvider):
     """
     Domain knowledge for legal citation hallucination checker.
-    
+
     θ represents task instance-specific information about which citations/sentences are hallucinated:
     - For each citation in the brief: whether it exists, is accurately quoted, has correct pincites, supports the correct holding
     - Evidence from search results and opinion fetches that confirms or refutes each citation
     """
-    
+
     def get_theta_description(self) -> str:
         return """### Task Parameters (θ)
 Task instance-specific information needed to identify hallucinated citations in the brief.
@@ -525,10 +527,10 @@ How to verify legal citations and detect hallucinations:
     def get_classification_guidance(self) -> str:
         return """Score each action 0.0–1.0 by how directly it gathers evidence for identifying hallucinated citations. Search and opinion actions: 0.7–0.95. THINK: 0.2–0.5."""
 
-    def get_action_selection_task_section(self) -> Optional[str]:
+    def get_action_selection_task_section(self) -> str | None:
         return """You are verifying citations in a legal brief for hallucinations. Your uncertainty (θ) is: which citations are hallucinated (non-existent, misquoted, or wrong pincite). You reduce that uncertainty by using search and opinion actions to gather evidence; then you submit your final list of hallucinated citations."""
 
-    def get_action_selection_guidance(self) -> Optional[str]:
+    def get_action_selection_guidance(self) -> str | None:
         return """For this task you must **verify citations** by gathering evidence from external sources. Apply the following when choosing actions:
 
 - **THINK has zero information gain**: The observation from THINK only echoes your thought
@@ -605,13 +607,13 @@ You have access to:
 def get_response_requirements() -> str:
     """
     Get task-specific response requirements for hallucination checker predictions.
-    
+
     Returns:
         Response requirements string (list of hallucinated citations)
     """
     return (
         "Provide a **list** of hallucinated citations, case names,quotes, and holdings.\n\n"
-        "**Format:** A JSON array of only the hallucinated segments, e.g. `[\"string1\", \"string2\"]`.\n\n"
+        '**Format:** A JSON array of only the hallucinated segments, e.g. `["string1", "string2"]`.\n\n'
         "**Completeness (required):** Your list must include **every** citation, quote, or holding that you have labeled as hallucinated in your Current Task Beliefs. "
         "Do not omit any segment you believe is hallucinated — the response is evaluated against the full set. If you have N items marked hallucinated in your beliefs, your response must contain exactly those N segments (or the citation alone when sub-items are implied).\n\n"
         "**Important**: If a citation itself is hallucinated, it is assumed that all the quotes and holdings within that citation are hallucinated as well so there is no need to return them separately. "
@@ -627,7 +629,7 @@ def get_response_requirements() -> str:
 def create_boed_belief_update_json_format() -> str:
     """
     Create JSON format instructions for BOED belief update prompts.
-    
+
     Returns:
         Formatted string with belief update JSON format
     """
@@ -648,23 +650,23 @@ Write the belief as a **long, detailed natural language paragraph** (or multiple
 class BOEDBeliefUpdatePromptConstructor(BeliefUpdatePromptConstructor):
     """
     Prompt constructor for belief updates in BOED framework.
-    
+
     After each action-observation pair, updates beliefs about:
     - θ (task parameters): Instance-specific information needed for prediction
     """
-    
+
     def __init__(
         self,
         domain_knowledge: DomainKnowledgeProvider = None,
     ):
         """
         Initialize the belief update prompt constructor.
-        
+
         Args:
             domain_knowledge: Provider for task-family specific θ definitions (None = no domain-specific prompts)
         """
         self.domain_knowledge = domain_knowledge
-    
+
     def get_system_prompt(
         self,
         environment_description: str,
@@ -672,31 +674,31 @@ class BOEDBeliefUpdatePromptConstructor(BeliefUpdatePromptConstructor):
     ) -> str:
         """
         Get the system prompt for belief updating.
-        
+
         Args:
             environment_description: Description of the task environment
-            
+
         Returns:
             System prompt for belief updating
         """
-        
+
         theta_def = get_canonical_theta_definition()
-        
+
         # Build framework: canonical definition + domain-specific if available
         framework = f"""## Task Parameters (θ)
 {theta_def}"""
-        
+
         if self.domain_knowledge:
             theta_desc = self.domain_knowledge.get_theta_description()
             framework += f"""
 
 ### Domain-Specific Definition
 {theta_desc}"""
-        
+
         framework += """
 
 You maintain a Bayesian belief p(θ), described in natural language, that is updated based on observations from actions taken in the information environment."""
-        
+
         return f"""You are an LLM agent taking actions within an information environment to solve a task. Each action you take returns an observation that provides information to help you make an accurate prediction.
 
 You use Bayesian Optimal Experimental Design (BOED) for action selection, which focuses on reducing uncertainty about task-specific information.
@@ -720,24 +722,24 @@ When you receive an observation:
 - Evaluate source reliability and relevance
 - Focus on instance-specific facts, signals, and multiple possible interpretations
 - Acknowledge uncertainty and identify what information would be most valuable next"""
-    
+
     def get_user_prompt(
         self,
         previous_beliefs: str,
         observation: Observation,
         action_type: str,
-        action_parameters: Optional[Dict] = None,
+        action_parameters: dict | None = None,
         **kwargs,
     ) -> str:
         """
         Get the user prompt for belief updating.
-        
+
         Args:
             previous_beliefs: Current belief state before update
             observation: The observation from the action
             action_type: Type of action that produced the observation
             action_parameters: Parameters of the action
-            
+
         Returns:
             User prompt for belief updating
         """
@@ -772,11 +774,11 @@ Task Beliefs: [Your rich, cumulative understanding of this task instance, with m
 class BOEDActionSelectionPromptConstructor(ActionSelectionPromptConstructor):
     """
     Prompt constructor for action selection in BOED framework.
-    
+
     Guides the agent to choose actions that maximize expected information gain
     about task parameters (θ).
     """
-    
+
     def __init__(
         self,
         domain_knowledge: DomainKnowledgeProvider = None,
@@ -784,35 +786,37 @@ class BOEDActionSelectionPromptConstructor(ActionSelectionPromptConstructor):
     ):
         """
         Initialize the action selection prompt constructor.
-        
+
         Args:
             domain_knowledge: Provider for task-family specific θ definitions (None = no domain-specific prompts)
             max_history_actions: Max number of recent actions to include in prompts
         """
         self.domain_knowledge = domain_knowledge
         self.max_history_actions = max_history_actions
-    
+
     def get_system_prompt(
         self,
-        action_space: List[ActionType],
+        action_space: list[ActionType],
         environment_description: str,
         search_capabilities: str = "",
         **kwargs,
     ) -> str:
         """
         Get the system prompt for action selection.
-        
+
         Args:
             action_space: List of available action types
             environment_description: Description of the task environment
             search_capabilities: Optional description of available search types
-            
+
         Returns:
             System prompt for action selection
         """
-        
+
         # Optional short task section from domain (replaces long θ + domain block when set)
-        if self.domain_knowledge and hasattr(self.domain_knowledge, "get_action_selection_task_section"):
+        if self.domain_knowledge and hasattr(
+            self.domain_knowledge, "get_action_selection_task_section"
+        ):
             short_section = self.domain_knowledge.get_action_selection_task_section()
             if short_section:
                 theta_section = f"## Task\n{short_section}"
@@ -835,19 +839,21 @@ class BOEDActionSelectionPromptConstructor(ActionSelectionPromptConstructor):
             theta_section += """
 
 You maintain a Bayesian belief p(θ) that is updated based on observations from actions."""
-        
+
         actions_desc = create_selection_actions_description(action_space)
-        
+
         # Build action guidelines dynamically
         action_guidelines = build_action_guidelines(action_space)
-        
+
         # Optional task-specific action selection guidance (e.g. THINK has zero EIG, prefer search)
         action_selection_guidance = ""
-        if self.domain_knowledge and hasattr(self.domain_knowledge, "get_action_selection_guidance"):
+        if self.domain_knowledge and hasattr(
+            self.domain_knowledge, "get_action_selection_guidance"
+        ):
             guidance = self.domain_knowledge.get_action_selection_guidance()
             if guidance:
                 action_selection_guidance = f"\n\n## Task-Specific Guidance\n{guidance}"
-        
+
         return f"""You are an LLM agent taking actions within an information environment to solve a task. Each action you take returns an observation that provides information to help you make an accurate prediction.
 
 You use Bayesian Optimal Experimental Design (BOED) for action selection, which focuses on reducing uncertainty about task-specific information.
@@ -887,11 +893,11 @@ EIG(θ | action) = I(θ; observation | action, history)
 - Prefer actions for which you expect the observation to reduce the most impactful uncertainties about θ
 
 {create_action_selection_json_format()}"""
-    
+
     def get_user_prompt(
         self,
-        observation: Optional[Observation],
-        history: List,
+        observation: Observation | None,
+        history: list,
         current_beliefs: str,
         max_steps: int,
         task_instance_description: str = "",
@@ -900,7 +906,7 @@ EIG(θ | action) = I(θ; observation | action, history)
     ) -> str:
         """
         Get the user prompt for action selection.
-        
+
         Args:
             observation: Current observation (None for initial state)
             history: List of previous actions
@@ -908,7 +914,7 @@ EIG(θ | action) = I(θ; observation | action, history)
             max_steps: Maximum number of steps allowed
             task_instance_description: Description of the current task instance
             response_requirements: Task-specific format for PROVIDE_FINAL_RESPONSE (so voluntary final answers match)
-            
+
         Returns:
             User prompt for action selection
         """
@@ -927,13 +933,13 @@ When you choose PROVIDE_FINAL_RESPONSE, the "response" field must follow this fo
 {current_beliefs}
 
 ### Current Observation:
-{observation.result if observation else 'Initial state'}
+{observation.result if observation else "Initial state"}
 
 ### Recent Actions:
-{format_action_history(history, max_actions=self.max_history_actions) if history else 'No previous actions'}
+{format_action_history(history, max_actions=self.max_history_actions) if history else "No previous actions"}
 
 ### Task Instance
-{task_instance_description or 'N/A'}
+{task_instance_description or "N/A"}
 {response_requirements_block}
 ## Task
 Choose the **single next action** that will maximize expected information gain about:
@@ -953,11 +959,11 @@ Provide your response as the required JSON format."""
 class BOEDPredictionPromptConstructor(PredictionPromptConstructor):
     """
     Prompt constructor for generating predictions in BOED framework.
-    
+
     Used to query the agent's current best prediction based on accumulated
     beliefs about θ.
     """
-    
+
     def __init__(
         self,
         domain_knowledge: DomainKnowledgeProvider = None,
@@ -965,18 +971,18 @@ class BOEDPredictionPromptConstructor(PredictionPromptConstructor):
     ):
         """
         Initialize the prediction prompt constructor.
-        
+
         Args:
             domain_knowledge: Provider for task-family specific θ definitions (None = no domain-specific prompts)
             max_history_actions: Max number of recent actions to include in prompts
         """
         self.domain_knowledge = domain_knowledge
         self.max_history_actions = max_history_actions
-    
+
     def get_system_prompt(
         self,
         environment_description: str,
-        max_steps: int = None,
+        max_steps: int | None = None,
         **kwargs,
     ) -> str:
         """
@@ -1015,14 +1021,14 @@ class BOEDPredictionPromptConstructor(PredictionPromptConstructor):
 
 ## Environment
 {environment_description}"""
-    
+
     def get_user_prompt(
         self,
         task_beliefs: str,
         task_instance_description: str = "",
         response_requirements: str = "",
-        history: Optional[List[Dict]] = None,
-        max_steps: int = None,
+        history: list[dict] | None = None,
+        max_steps: int | None = None,
         **kwargs,
     ) -> str:
         """
@@ -1045,7 +1051,9 @@ class BOEDPredictionPromptConstructor(PredictionPromptConstructor):
             sections.append(f"## Current Task Beliefs (θ)\n{task_beliefs}")
 
             if history:
-                history_text = format_action_history(history, max_actions=self.max_history_actions)
+                history_text = format_action_history(
+                    history, max_actions=self.max_history_actions
+                )
                 if history_text:
                     sections.append(f"## Action History\n{history_text}")
 
@@ -1092,7 +1100,7 @@ class BOEDPredictionPromptConstructor(PredictionPromptConstructor):
 def create_citation_tracker_belief_update_json_format() -> str:
     """
     Create JSON format instructions for BOED belief update prompts.
-    
+
     Returns:
         Formatted string with belief update JSON format
     """
@@ -1107,26 +1115,27 @@ Provide your updated beliefs as a JSON object:
 
 **Important**: The value must be a text string (natural language), NOT nested JSON."""
 
+
 class BOEDCitationTrackerBeliefUpdatePromptConstructor(BeliefUpdatePromptConstructor):
     """
     Prompt constructor for belief updates in BOED framework.
-    
+
     After each action-observation pair, updates beliefs about:
     - θ (task parameters): Instance-specific information needed for prediction
     """
-    
+
     def __init__(
         self,
         domain_knowledge: DomainKnowledgeProvider = None,
     ):
         """
         Initialize the belief update prompt constructor.
-        
+
         Args:
             domain_knowledge: Provider for task-family specific θ definitions (None = no domain-specific prompts)
         """
         self.domain_knowledge = domain_knowledge
-    
+
     def get_system_prompt(
         self,
         environment_description: str,
@@ -1134,30 +1143,30 @@ class BOEDCitationTrackerBeliefUpdatePromptConstructor(BeliefUpdatePromptConstru
     ) -> str:
         """
         Get the system prompt for belief updating.
-        
+
         Args:
             environment_description: Description of the task environment
-            
+
         Returns:
             System prompt for belief updating
         """
-        
-        theta_def = get_canonical_theta_definition()
-        
+
+        _theta_def = get_canonical_theta_definition()
+
         # Build framework: canonical definition + domain-specific if available
-        framework = f"""
+        framework = """
 
 You maintain a Bayesian belief p(θ), described in natural language, that is updated based on observations from actions taken in the information environment.
 Your task is to maintain a list of citations, quotes, and holdings from the brief, described in words. 
 Keep a numbered or bulleted list. For each item note: (1) the citation, quote, or holding, (2) status: pending, verified as correct, or hallucinated, (3) the associated opinion id if applicable."""
-        
+
         domain_block = ""
         if self.domain_knowledge:
             domain_block = f"""
 
 ## Domain / task parameters (θ)
 {self.domain_knowledge.get_theta_description()}"""
-        
+
         return f"""You are an LLM agent taking actions within an information environment to solve a task. Each action you take returns an observation that provides information to help you make an accurate prediction.
 
 You use Bayesian Optimal Experimental Design (BOED) for action selection, which focuses on reducing uncertainty about task-specific information.
@@ -1181,24 +1190,24 @@ When you receive an observation:
 - Note the evidence supporting or contradicting different possibilities
 - Focus on instance-specific facts, signals, and multiple possible interpretations
 - Acknowledge uncertainty and identify what information would be most valuable next"""
-    
+
     def get_user_prompt(
         self,
         previous_beliefs: str,
         observation: Observation,
         action_type: str,
-        action_parameters: Optional[Dict] = None,
+        action_parameters: dict | None = None,
         **kwargs,
     ) -> str:
         """
         Get the user prompt for belief updating.
-        
+
         Args:
             previous_beliefs: Current belief state before update
             observation: The observation from the action
             action_type: Type of action that produced the observation
             action_parameters: Parameters of the action
-            
+
         Returns:
             User prompt for belief updating
         """
@@ -1226,26 +1235,27 @@ Task Beliefs: [Your list of citations, quotes, and holdings from the brief, desc
 
 {create_citation_tracker_belief_update_json_format()}"""
 
+
 class BOEDCitationTrackerPredictionPromptConstructor(PredictionPromptConstructor):
     """
     Prompt constructor for generating predictions in BOED framework.
-    
+
     Used to query the agent's current best prediction based on accumulated
     beliefs about θ.
     """
-    
+
     def __init__(
         self,
         domain_knowledge: DomainKnowledgeProvider = None,
     ):
         """
         Initialize the prediction prompt constructor.
-        
+
         Args:
             domain_knowledge: Provider for task-family specific θ definitions (None = no domain-specific prompts)
         """
         self.domain_knowledge = domain_knowledge
-    
+
     def get_system_prompt(
         self,
         environment_description: str,
@@ -1253,10 +1263,10 @@ class BOEDCitationTrackerPredictionPromptConstructor(PredictionPromptConstructor
     ) -> str:
         """
         Get the system prompt for prediction.
-        
+
         Args:
             environment_description: Description of the task environment
-            
+
         Returns:
             System prompt for prediction
         """
@@ -1265,7 +1275,9 @@ class BOEDCitationTrackerPredictionPromptConstructor(PredictionPromptConstructor
         if max_steps == 0:
             # Direct prediction (no search steps): simplified intro + domain knowledge only
             theta_section = ""
-            if self.domain_knowledge and hasattr(self.domain_knowledge, "get_domain_knowledge_description"):
+            if self.domain_knowledge and hasattr(
+                self.domain_knowledge, "get_domain_knowledge_description"
+            ):
                 theta_desc = self.domain_knowledge.get_domain_knowledge_description()
                 theta_section = f"### Domain-Specific Definition\n{theta_desc}\n\n"
             return f"""You are a legal expert tasked with verifying case citations, quotes and holdings in briefs. Provide your best prediction based on the task description.
@@ -1285,49 +1297,49 @@ class BOEDCitationTrackerPredictionPromptConstructor(PredictionPromptConstructor
 
 ## Environment
 {environment_description}"""
-    
+
     def get_user_prompt(
         self,
         task_beliefs: str,
         task_instance_description: str = "",
         response_requirements: str = "",
-        history: Optional[List[Dict]] = None,
+        history: list[dict] | None = None,
         **kwargs,
     ) -> str:
         """
         Get the user prompt for prediction.
-        
+
         Args:
             task_beliefs: Current task-level beliefs (θ)
             task_instance_description: Description of the task instance
             response_requirements: Task-specific requirements for the response format
             history: Optional action history (list of action-observation pairs)
-            
+
         Returns:
             User prompt for prediction
         """
         # Order: beliefs → history → task instance → response requirements
         sections = []
-        
+
         # Show beliefs
         sections.append(f"## Current Task Beliefs (θ)\n{task_beliefs}")
-        
+
         # Then show action history if it exists
         if history:
             history_text = format_action_history(history)
             if history_text:
                 sections.append(f"## Action History\n{history_text}")
-        
+
         # Then task instance
         if task_instance_description:
             sections.append(f"## Task Instance\n{task_instance_description}")
-        
+
         # Response requirements
         if response_requirements:
             sections.append(f"## Response Requirements\n{response_requirements}")
-        
+
         content = "\n\n".join(sections)
-        
+
         return f"""{content}
 
 ## Task

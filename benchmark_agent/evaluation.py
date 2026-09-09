@@ -6,7 +6,7 @@ predicted item is a substring of it). Scoring is kept separate from recording.
 
 import json
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 # --- Hallucination checker scoring ---
 
 
-def _extract_list_from_string(s: str) -> Optional[List[str]]:
+def _extract_list_from_string(s: str) -> list[str] | None:
     """Return the first JSON list embedded in `s`, or None if there is none.
 
     The scanner is quote- and escape-aware so brackets inside string items do
@@ -55,14 +55,18 @@ def _extract_list_from_string(s: str) -> Optional[List[str]]:
             if depth == 0:
                 try:
                     parsed = json.loads(s[start : i + 1])
-                    return [str(x).strip() for x in parsed if x is not None] if isinstance(parsed, list) else None
+                    return (
+                        [str(x).strip() for x in parsed if x is not None]
+                        if isinstance(parsed, list)
+                        else None
+                    )
                 except json.JSONDecodeError:
                     return None
         i += 1
     return None
 
 
-def parse_predictions(raw: Any) -> List[str]:
+def parse_predictions(raw: Any) -> list[str]:
     """
     Parse a final response (or a stored predicted_hallucinations value) into a
     list of individual predictions. This is the single parser used both when the
@@ -107,7 +111,7 @@ def _normalize(s: str) -> str:
     return str(s).strip().lower()
 
 
-def _fragments_in_order(fragments: List[str], text: str) -> bool:
+def _fragments_in_order(fragments: list[str], text: str) -> bool:
     pos = 0
     for frag in fragments:
         if not frag:
@@ -149,7 +153,7 @@ def _is_match(gt_item: str, pred_item: str) -> bool:
     return False
 
 
-def _normalize_ground_truth(list_hallucinations: Any) -> List[Tuple[str, Optional[str]]]:
+def _normalize_ground_truth(list_hallucinations: Any) -> list[tuple[str, str | None]]:
     """
     Normalize list_hallucinations to a list of (span, type).
     Handles: list of spans, dict {span: type}.
@@ -157,13 +161,21 @@ def _normalize_ground_truth(list_hallucinations: Any) -> List[Tuple[str, Optiona
     if not list_hallucinations:
         return []
     if isinstance(list_hallucinations, dict):
-        return [(str(k).strip(), (str(v).strip() if v else None)) for k, v in list_hallucinations.items() if k]
+        return [
+            (str(k).strip(), (str(v).strip() if v else None))
+            for k, v in list_hallucinations.items()
+            if k
+        ]
     if isinstance(list_hallucinations, list):
-        return [(str(x).strip(), None) for x in list_hallucinations if x is not None and str(x).strip()]
+        return [
+            (str(x).strip(), None)
+            for x in list_hallucinations
+            if x is not None and str(x).strip()
+        ]
     return []
 
 
-def extract_ground_truth(entry: Dict[str, Any]) -> Any:
+def extract_ground_truth(entry: dict[str, Any]) -> Any:
     """Resolve the ground-truth field from known dataset variants (including a legacy typo)."""
     if not entry:
         return []
@@ -176,8 +188,8 @@ def extract_ground_truth(entry: Dict[str, Any]) -> Any:
 def evaluate_entry(
     ground_truth: Any,
     predicted_hallucinations: Any,
-    type_filter: Optional[List[str]] = None,
-) -> Tuple[int, int, int, int]:
+    type_filter: list[str] | None = None,
+) -> tuple[int, int, int, int]:
     """
     Evaluate a single entry.
 
@@ -196,15 +208,29 @@ def evaluate_entry(
     """
     predictions = parse_predictions(predicted_hallucinations)
     gt_pairs = _normalize_ground_truth(ground_truth)
-    types_lower = {t.strip().lower() for t in type_filter if t} if type_filter else set()
+    types_lower = (
+        {t.strip().lower() for t in type_filter if t} if type_filter else set()
+    )
     if type_filter and types_lower:
-        included_pairs = [(span, t) for span, t in gt_pairs if span and (t is None or (t and t.lower() in types_lower))]
-        excluded_pairs = [(span, t) for span, t in gt_pairs if span and (t is not None and t and t.lower() not in types_lower)]
+        included_pairs = [
+            (span, t)
+            for span, t in gt_pairs
+            if span and (t is None or (t and t.lower() in types_lower))
+        ]
+        excluded_pairs = [
+            (span, t)
+            for span, t in gt_pairs
+            if span and (t is not None and t and t.lower() not in types_lower)
+        ]
     else:
         included_pairs = gt_pairs
         excluded_pairs = []
     gt_spans = list(dict.fromkeys(span for span, _ in included_pairs))
-    excluded_gt_spans = list(dict.fromkeys(span for span, _ in excluded_pairs)) if excluded_pairs else []
+    excluded_gt_spans = (
+        list(dict.fromkeys(span for span, _ in excluded_pairs))
+        if excluded_pairs
+        else []
+    )
 
     ground_truth_found = 0
     for g in gt_spans:
@@ -223,7 +249,12 @@ def evaluate_entry(
         if matches_included:
             correct_predictions += 1
 
-    return ground_truth_found, len(gt_spans), correct_predictions, total_predictions_for_precision
+    return (
+        ground_truth_found,
+        len(gt_spans),
+        correct_predictions,
+        total_predictions_for_precision,
+    )
 
 
 def compute_metrics(
@@ -231,10 +262,12 @@ def compute_metrics(
     total_ground_truth: int,
     correct_predictions: int,
     total_predictions: int,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Compute precision, recall, and F1 from counts."""
     recall = ground_truth_found / total_ground_truth if total_ground_truth > 0 else 0.0
-    precision = correct_predictions / total_predictions if total_predictions > 0 else 0.0
+    precision = (
+        correct_predictions / total_predictions if total_predictions > 0 else 0.0
+    )
     f1 = (
         2 * precision * recall / (precision + recall)
         if (precision + recall) > 0
@@ -252,9 +285,9 @@ def compute_metrics(
 
 
 def evaluate_hallucination_entry(
-    entry: Dict[str, Any],
-    type_filter: Optional[List[str]] = None,
-) -> Dict[str, float]:
+    entry: dict[str, Any],
+    type_filter: list[str] | None = None,
+) -> dict[str, float]:
     """
     Evaluate a single hallucination checker entry (dict with list_hallucinations and predicted_hallucinations).
 
@@ -273,7 +306,7 @@ def evaluate_hallucination_entry(
     return compute_metrics(gt_found, gt_total, correct_pred, pred_total)
 
 
-def aggregate_metrics(entries_metrics: List[Dict[str, float]]) -> Dict[str, float]:
+def aggregate_metrics(entries_metrics: list[dict[str, float]]) -> dict[str, float]:
     """
     Aggregate precision, recall, F1 across multiple entries (micro-averaged).
 

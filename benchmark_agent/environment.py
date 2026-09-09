@@ -9,18 +9,22 @@ import json
 import logging
 import os
 import re
-import string
 from difflib import SequenceMatcher
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
-from .tracing import langfuse
 from .actions import Action, ActionType
-from .courtlistener import NonRetryableError, fetch_opinion, lookup_citation, search_courtlistener
+from .courtlistener import (
+    NonRetryableError,
+    fetch_opinion,
+    lookup_citation,
+    search_courtlistener,
+)
 from .documents import DocumentManager, read_document_content
 from .prompts import (
     get_response_requirements,
     get_search_capabilities_open_search,
 )
+from .tracing import langfuse
 from .web_search import search as search_web
 
 logger = logging.getLogger(__name__)
@@ -31,63 +35,81 @@ def get_timestamp() -> str:
 
 
 class Observation:
-    def __init__(self, result: Any, metadata: Optional[Dict[str, Any]] = None):
+    def __init__(self, result: Any, metadata: dict[str, Any] | None = None):
         self.result = result
         self.metadata = metadata or {}
 
     def __str__(self):
         if isinstance(self.result, dict):
             # Format structured results (like search results) in a readable way
-            if 'action_type' in self.result and 'search_results' in self.result:
+            if "action_type" in self.result and "search_results" in self.result:
                 # Format search results
                 lines = []
                 lines.append(f"Action: {self.result.get('action_type', 'UNKNOWN')}")
-                if 'query' in self.result:
+                if "query" in self.result:
                     lines.append(f"Query: {self.result['query']}")
-                if 'search_type' in self.result:
+                if "search_type" in self.result:
                     lines.append(f"Search Type: {self.result['search_type']}")
                 lines.append(f"Found {self.result.get('num_results', 0)} results:\n")
-                
-                for i, result_item in enumerate(self.result.get('search_results', []), 1):
+
+                for i, result_item in enumerate(
+                    self.result.get("search_results", []), 1
+                ):
                     lines.append(f"\nResult {i}:")
-                    if 'result_id' in result_item:
+                    if "result_id" in result_item:
                         lines.append(f"  ID: {result_item['result_id']}")
-                    if 'title' in result_item:
+                    if "title" in result_item:
                         lines.append(f"  Title: {result_item['title']}")
-                    if 'url' in result_item:
+                    if "url" in result_item:
                         lines.append(f"  URL: {result_item['url']}")
-                    if 'snippet' in result_item:
-                        snippet = result_item.get('snippet') or ''
-                        lines.append(f"  Snippet: {snippet[:200]}..." if len(snippet) > 200 else f"  Snippet: {snippet}")
-                    if 'published_date_raw' in result_item:
-                        lines.append(f"  Published: {result_item['published_date_raw']}")
-                    if 'metadata' in result_item and 'contents' in result_item['metadata']:
-                        contents = result_item['metadata']['contents'] or ''
+                    if "snippet" in result_item:
+                        snippet = result_item.get("snippet") or ""
+                        lines.append(
+                            f"  Snippet: {snippet[:200]}..."
+                            if len(snippet) > 200
+                            else f"  Snippet: {snippet}"
+                        )
+                    if "published_date_raw" in result_item:
+                        lines.append(
+                            f"  Published: {result_item['published_date_raw']}"
+                        )
+                    if (
+                        "metadata" in result_item
+                        and "contents" in result_item["metadata"]
+                    ):
+                        contents = result_item["metadata"]["contents"] or ""
                         # Contents are already truncated by environment, but show indication if very long
-                        lines.append(f"  Contents: {contents[:500]}..." if len(contents) > 500 else f"  Contents: {contents}")
-                    if 'metadata' in result_item and 'score' in result_item['metadata']:
+                        lines.append(
+                            f"  Contents: {contents[:500]}..."
+                            if len(contents) > 500
+                            else f"  Contents: {contents}"
+                        )
+                    if "metadata" in result_item and "score" in result_item["metadata"]:
                         lines.append(f"  Score: {result_item['metadata']['score']:.3f}")
-                    if 'metadata' in result_item:
-                        metadata = result_item['metadata']
-                        if 'subdomain' in metadata:
+                    if "metadata" in result_item:
+                        metadata = result_item["metadata"]
+                        if "subdomain" in metadata:
                             lines.append(f"  Topic: {metadata['subdomain']}")
-                        if 'position' in metadata:
+                        if "position" in metadata:
                             lines.append(f"  Position: {metadata['position']}")
-                
+
                 return "\n".join(lines)
             else:
                 # Generic dict formatting
                 import json
+
                 return json.dumps(self.result, indent=2)
         else:
             # For strings or other types, return as string
             return str(self.result)
-    
+
     def __repr__(self):
         return f"Observation(result={self.result}, metadata={self.metadata})"
 
 
-def _error_observation(action_type: str, error: str, result: Any, **metadata: Any) -> Observation:
+def _error_observation(
+    action_type: str, error: str, result: Any, **metadata: Any
+) -> Observation:
     """Build the observation returned when an action fails.
 
     `result` is what the agent reads (an error message string, or a dict in the
@@ -97,11 +119,19 @@ def _error_observation(action_type: str, error: str, result: Any, **metadata: An
     extra fields, so `step()` can flag the failure.
     """
     logger.error("%s failed: %s", action_type, error)
-    return Observation(result=result, metadata={"action_type": action_type, **metadata, "error": error})
+    return Observation(
+        result=result, metadata={"action_type": action_type, **metadata, "error": error}
+    )
 
 
-class Environment():
-    def __init__(self, question: str, key: str, action_space: List[ActionType], max_steps: int = 6):
+class Environment:
+    def __init__(
+        self,
+        question: str,
+        key: str,
+        action_space: list[ActionType],
+        max_steps: int = 6,
+    ):
         self.question = question
         self.key = key
         self.max_steps = max_steps
@@ -110,53 +140,58 @@ class Environment():
         self.answer = ""
         self.current_step = 0
         self.terminated = False
-        
+
     def reset(self):
         self.answer = ""
         self.current_step = 0
         self.terminated = False
-        
+
     def is_correct(self):
         raise NotImplementedError("Environments must implement task-specific scoring.")
-    
+
     def is_terminated(self):
         return self.terminated
-    
+
     def is_truncated(self):
         return self.current_step >= self.max_steps
-    
+
     def step(self, action: Action) -> Observation:
         # Handle parsing failures by skipping the round
         if action is None:
             logger.warning("Agent returned None (parsing failed), skipping this round")
             return Observation(
                 result="Round skipped due to parsing failure",
-                metadata={"skipped": True, "reason": "parsing_failure"}
+                metadata={"skipped": True, "reason": "parsing_failure"},
             )
-        
+
         self.current_step += 1
-        
+
         if action.action_type == ActionType.PROVIDE_FINAL_RESPONSE:
             # Capture the final answer
             self.answer = getattr(action, "answer", "")
             observation = Observation(
                 result=f"Agent's response: {self.answer}",
-                metadata={"answer": self.answer, "key": self.key, "correct": self.is_correct()}
+                metadata={
+                    "answer": self.answer,
+                    "key": self.key,
+                    "correct": self.is_correct(),
+                },
             )
             self.terminated = True
             return observation
-            
+
         elif action.action_type == ActionType.THINK:
             # Allow internal reasoning
             prompt = getattr(action, "prompt", "")
             observation = Observation(
-                result=f"Agent considers: {prompt}",
-                metadata={"prompt": prompt}
+                result=f"Agent considers: {prompt}", metadata={"prompt": prompt}
             )
             return observation
 
         else:
-            raise NotImplementedError(f"Action type {action.action_type} not implemented in base Environment.")
+            raise NotImplementedError(
+                f"Action type {action.action_type} not implemented in base Environment."
+            )
 
 
 class HallucinationCheckerEnvironment(Environment):
@@ -169,7 +204,7 @@ class HallucinationCheckerEnvironment(Environment):
     - ACCESS_COURTLISTENER_OPINION: Fetch full opinion by ID (stored locally; agent sees snippet)
     - SEARCH_LOCAL_OPINION: Search for a string within a previously fetched opinion
     """
-    
+
     # Snippet length returned to agent after ACCESS_COURTLISTENER_OPINION (full opinion saved to disk)
     OPINION_SNIPPET_LENGTH = 400
     # Context chars before/after a match for SEARCH_LOCAL_OPINION
@@ -180,15 +215,17 @@ class HallucinationCheckerEnvironment(Environment):
     SEARCH_LOCAL_OPINION_FUZZY_MIN_RATIO = 0.6
     # Fuzzy match: step size (chars) when sliding over the opinion to limit cost
     SEARCH_LOCAL_OPINION_FUZZY_STEP = 30
-    
-    def __init__(self, 
-                 brief_info: Dict[str, Any],
-                 brief_text: str,
-                 max_steps: int = 10, 
-                 search_top_k: int = 3,
-                 opinion_cache_dir: Optional[str] = None):
+
+    def __init__(
+        self,
+        brief_info: dict[str, Any],
+        brief_text: str,
+        max_steps: int = 10,
+        search_top_k: int = 3,
+        opinion_cache_dir: str | None = None,
+    ):
         """
-        
+
         Args:
             brief_info: Dictionary containing brief information
             max_steps: Maximum number of steps allowed
@@ -201,7 +238,7 @@ class HallucinationCheckerEnvironment(Environment):
             or brief_info.get("list_hallucinationss")
             or []
         )
-        
+
         action_space = [
             ActionType.PROVIDE_FINAL_RESPONSE,
             ActionType.THINK,
@@ -213,58 +250,81 @@ class HallucinationCheckerEnvironment(Environment):
             ActionType.READ_DOCUMENT,
             ActionType.EDIT_SCRATCHPAD,
         ]
-        
-        super().__init__(question="", key=key, action_space=action_space, max_steps=max_steps)
-        
+
+        super().__init__(
+            question="", key=key, action_space=action_space, max_steps=max_steps
+        )
+
         # Potentially can pass more info here but not going to use it for now
         self.brief_info = brief_info
         self.brief_text = brief_text
-        
-        
+
         # Action space is already set by parent class
-        
+
         # Track agent performance
         self.search_history = []
 
         # Number of results to return for search actions (from config search.top_k).
         # (Some Action models expose `num_results`; older code used `k`.)
         self.search_top_k = search_top_k
-        
+
         # Directory to store full opinions by opinion_id (ACCESS_COURTLISTENER_OPINION); agent sees snippet only
         self.opinion_cache_dir = opinion_cache_dir or "outputs/opinion_cache"
         os.makedirs(self.opinion_cache_dir, exist_ok=True)
 
         # Document manager: registers fetched opinions for READ_DOCUMENT and holds scratchpad for EDIT_SCRATCHPAD
         self.document_manager = DocumentManager()
-        
+
         self.initial_observation = Observation(
             result="Initial State.",
             metadata={
                 "max_steps": self.max_steps,
-                "available_actions": [action_type.value for action_type in self.action_space]
-            }
+                "available_actions": [
+                    action_type.value for action_type in self.action_space
+                ],
+            },
         )
-        
-        logger.debug(f"Initialized Legal Hallucination Checker environment (max_steps={self.max_steps})")
+
+        logger.debug(
+            f"Initialized Legal Hallucination Checker environment (max_steps={self.max_steps})"
+        )
 
     def step(self, action: Action) -> Observation:
-        name = action.action_type.value.lower().replace("_", "-") if action else "skip-action"
+        name = (
+            action.action_type.value.lower().replace("_", "-")
+            if action
+            else "skip-action"
+        )
         retrieval_actions = {
-            ActionType.OPEN_WEB_SEARCH, ActionType.OPEN_COURTLISTENER_SEARCH,
-            ActionType.ACCESS_COURTLISTENER_OPINION, ActionType.COURTLISTENER_CITATION_LOOKUP,
-            ActionType.SEARCH_LOCAL_OPINION, ActionType.READ_DOCUMENT,
+            ActionType.OPEN_WEB_SEARCH,
+            ActionType.OPEN_COURTLISTENER_SEARCH,
+            ActionType.ACCESS_COURTLISTENER_OPINION,
+            ActionType.COURTLISTENER_CITATION_LOOKUP,
+            ActionType.SEARCH_LOCAL_OPINION,
+            ActionType.READ_DOCUMENT,
         }
         with langfuse.start_as_current_observation(
             name=name,
-            as_type="retriever" if action and action.action_type in retrieval_actions else "tool",
+            as_type="retriever"
+            if action and action.action_type in retrieval_actions
+            else "tool",
             input=action.get_input_parameters() if action else None,
             metadata={"step": self.current_step + 1},
         ) as span:
             observation = self._execute_action(action)
-            span.update(output={"result": observation.result, "metadata": observation.metadata,
-                                "agent_observation": str(observation)})
-            if observation.metadata and (observation.metadata.get("error") or observation.metadata.get("skipped")):
-                span.update(level="ERROR", status_message="Action failed or was skipped")
+            span.update(
+                output={
+                    "result": observation.result,
+                    "metadata": observation.metadata,
+                    "agent_observation": str(observation),
+                }
+            )
+            if observation.metadata and (
+                observation.metadata.get("error") or observation.metadata.get("skipped")
+            ):
+                span.update(
+                    level="ERROR", status_message="Action failed or was skipped"
+                )
             return observation
 
     def _execute_action(self, action: Action) -> Observation:
@@ -273,33 +333,33 @@ class HallucinationCheckerEnvironment(Environment):
             logger.warning("Agent returned None (parsing failed), skipping this round")
             return Observation(
                 result="Round skipped due to parsing failure",
-                metadata={"skipped": True, "reason": "parsing_failure"}
+                metadata={"skipped": True, "reason": "parsing_failure"},
             )
-        
+
         # Increment step counter (same as parent class)
         self.current_step += 1
-        
+
         if action.action_type == ActionType.PROVIDE_FINAL_RESPONSE:
             # Handle legal prediction
             return self._handle_final_response_action(action)
-            
+
         elif action.action_type == ActionType.THINK:
             # Handle internal reasoning - no environment interaction
             return self._handle_think_action(action)
-            
+
         elif action.action_type == ActionType.OPEN_WEB_SEARCH:
             # Handle web search
             return self._handle_web_search_action(action)
-        
+
         elif action.action_type == ActionType.OPEN_COURTLISTENER_SEARCH:
             return self._handle_courtlistener_search_action(action)
-        
+
         elif action.action_type == ActionType.ACCESS_COURTLISTENER_OPINION:
             return self._handle_courtlistener_opinion_action(action)
-        
+
         elif action.action_type == ActionType.COURTLISTENER_CITATION_LOOKUP:
             return self._handle_courtlistener_citation_lookup_action(action)
-        
+
         elif action.action_type == ActionType.SEARCH_LOCAL_OPINION:
             return self._handle_search_local_opinion_action(action)
         elif action.action_type == ActionType.READ_DOCUMENT:
@@ -307,8 +367,10 @@ class HallucinationCheckerEnvironment(Environment):
         elif action.action_type == ActionType.EDIT_SCRATCHPAD:
             return self._handle_edit_scratchpad_action(action)
         else:
-            raise NotImplementedError(f"Action type {action.action_type} not implemented in HallucinationChecker environment.")
-    
+            raise NotImplementedError(
+                f"Action type {action.action_type} not implemented in HallucinationChecker environment."
+            )
+
     def _handle_final_response_action(self, action: Action) -> Observation:
         response = getattr(action, "response", "")
 
@@ -326,31 +388,30 @@ class HallucinationCheckerEnvironment(Environment):
                 "action_type": "PROVIDE_FINAL_RESPONSE",
                 "response": response,
                 "is_correct": is_correct,
-            }
+            },
         )
         return observation
-    
+
     def _handle_think_action(self, action: Action) -> Observation:
         thought = getattr(action, "thought", "")
-        
+
         observation = Observation(
             result=f"Internal reasoning: {thought}",
-            metadata={
-                "action_type": "THINK",
-                "thought": thought
-            }
+            metadata={"action_type": "THINK", "thought": thought},
         )
         return observation
-    
+
     def _handle_web_search_action(self, action: Action) -> Observation:
         query = getattr(action, "query", "")
-        search_type = getattr(action, "search_type", "web")  # Default to "web" if not specified
+        search_type = getattr(
+            action, "search_type", "web"
+        )  # Default to "web" if not specified
         k = (
             getattr(action, "num_results", None)
             or getattr(action, "k", None)
             or getattr(self, "search_top_k", 10)
         )
-        
+
         try:
             # Google organic results usually carry no publication date, so excluding
             # undated results would silently drop nearly every web hit. The paper's
@@ -361,51 +422,53 @@ class HallucinationCheckerEnvironment(Environment):
                 num_results=k,
                 exclude_undated=False,
             )
-            
+
             # Create structured search results
             structured_results = []
             for i, result in enumerate(search_results):
                 # Get snippet as contents (most relevant part from Google)
-                contents = result.snippet if hasattr(result, 'snippet') else ""
-                
+                _contents = result.snippet if hasattr(result, "snippet") else ""
+
                 # Use position from search results (lower is better)
                 # Check for web_position, google_scholar_position, or position in metadata
                 position = None
-                if hasattr(result, 'metadata'):
-                    position = (result.metadata.get('web_position') or 
-                              result.metadata.get('google_scholar_position') or 
-                              result.metadata.get('position') or 
-                              i+1)
+                if hasattr(result, "metadata"):
+                    position = (
+                        result.metadata.get("web_position")
+                        or result.metadata.get("google_scholar_position")
+                        or result.metadata.get("position")
+                        or i + 1
+                    )
                 else:
-                    position = i+1
-                
+                    position = i + 1
+
                 # Create structured result dict
                 result_dict = result.to_dict()
                 # Add position to metadata if not already there
-                if 'metadata' not in result_dict:
-                    result_dict['metadata'] = {}
-                result_dict['metadata']['position'] = position
+                if "metadata" not in result_dict:
+                    result_dict["metadata"] = {}
+                result_dict["metadata"]["position"] = position
                 structured_results.append(result_dict)
-            
+
             # Create structured observation result (matching observation_metadata format)
             observation_result = {
                 "action_type": "OPEN_WEB_SEARCH",
                 "query": query,
                 "search_type": search_type,
                 "num_results": len(search_results),
-                "search_results": structured_results
+                "search_results": structured_results,
             }
-            
+
             # Store search in history
             search_record = {
                 "step": self.current_step,
                 "query": query,
                 "search_type": search_type,  # Use actual search_type from action
                 "num_results": len(search_results),
-                "timestamp": get_timestamp()
+                "timestamp": get_timestamp(),
             }
             self.search_history.append(search_record)
-            
+
             observation = Observation(
                 result=observation_result,
                 metadata={
@@ -413,21 +476,26 @@ class HallucinationCheckerEnvironment(Environment):
                     "query": query,
                     "search_type": search_type,
                     "num_results": len(search_results),
-                    "search_results": structured_results  # Use structured dicts for JSON serialization
-                }
+                    "search_results": structured_results,  # Use structured dicts for JSON serialization
+                },
             )
-            
+
         except Exception as e:
             observation = _error_observation(
-                "OPEN_WEB_SEARCH", str(e), f"Web search failed: {e}",
-                query=query, web_search_results=[],
+                "OPEN_WEB_SEARCH",
+                str(e),
+                f"Web search failed: {e}",
+                query=query,
+                web_search_results=[],
             )
 
         return observation
-    
+
     def _handle_courtlistener_search_action(self, action: Action) -> Observation:
         query = (getattr(action, "query", "") or "").strip()
-        search_type = getattr(action, "search_type", "opinions")  # Default to "opinions" if not specified
+        search_type = getattr(
+            action, "search_type", "opinions"
+        )  # Default to "opinions" if not specified
         k = (
             getattr(action, "num_results", None)
             or getattr(action, "k", None)
@@ -436,8 +504,10 @@ class HallucinationCheckerEnvironment(Environment):
 
         if not query:
             return _error_observation(
-                "OPEN_COURTLISTENER_SEARCH", "missing query",
-                "CourtListener search failed: missing query", query=query,
+                "OPEN_COURTLISTENER_SEARCH",
+                "missing query",
+                "CourtListener search failed: missing query",
+                query=query,
             )
         try:
             summary = search_courtlistener(query, search_type=search_type)
@@ -445,45 +515,63 @@ class HallucinationCheckerEnvironment(Environment):
             # Tell the agent the query itself is the problem so it can rephrase.
             error = f"Search query error: {exc}. Please fix the query and try again."
             return _error_observation(
-                "OPEN_COURTLISTENER_SEARCH", error, f"CourtListener search failed: {error}",
-                query=query, search_type=search_type, non_retryable=True,
+                "OPEN_COURTLISTENER_SEARCH",
+                error,
+                f"CourtListener search failed: {error}",
+                query=query,
+                search_type=search_type,
+                non_retryable=True,
             )
         except Exception as exc:
             return _error_observation(
-                "OPEN_COURTLISTENER_SEARCH", str(exc), f"CourtListener search failed: {exc}",
-                query=query, search_type=search_type,
+                "OPEN_COURTLISTENER_SEARCH",
+                str(exc),
+                f"CourtListener search failed: {exc}",
+                query=query,
+                search_type=search_type,
             )
 
         structured_results = []
         for idx, result in enumerate(summary["results"][:k]):
             metadata = dict(result.get("metadata") or {})
             metadata["position"] = idx + 1
-            structured_results.append({
-                "result_id": result.get("id") or result.get("case_name") or result.get("name") or result.get("docket_number"),
-                "title": result.get("case_name_full") or result.get("case_name") or result.get("name") or result.get("document_type") or "Result",
-                "url": result.get("url") or metadata.get("absolute_url"),
-                "snippet": result.get("snippet"),
-                "court": result.get("court"),
-                "date_filed": result.get("date_filed") or result.get("date_argued"),
-                "docket_number": result.get("docket_number"),
-                "metadata": metadata
-            })
+            structured_results.append(
+                {
+                    "result_id": result.get("id")
+                    or result.get("case_name")
+                    or result.get("name")
+                    or result.get("docket_number"),
+                    "title": result.get("case_name_full")
+                    or result.get("case_name")
+                    or result.get("name")
+                    or result.get("document_type")
+                    or "Result",
+                    "url": result.get("url") or metadata.get("absolute_url"),
+                    "snippet": result.get("snippet"),
+                    "court": result.get("court"),
+                    "date_filed": result.get("date_filed") or result.get("date_argued"),
+                    "docket_number": result.get("docket_number"),
+                    "metadata": metadata,
+                }
+            )
 
         observation_result = {
             "action_type": "OPEN_COURTLISTENER_SEARCH",
             "query": query,
             "search_type": search_type,
             "num_results": len(structured_results),
-            "search_results": structured_results
+            "search_results": structured_results,
         }
 
-        self.search_history.append({
-            "step": self.current_step,
-            "query": query,
-            "search_type": "courtlistener",
-            "num_results": len(structured_results),
-            "timestamp": get_timestamp()
-        })
+        self.search_history.append(
+            {
+                "step": self.current_step,
+                "query": query,
+                "search_type": "courtlistener",
+                "num_results": len(structured_results),
+                "timestamp": get_timestamp(),
+            }
+        )
         return Observation(
             result=observation_result,
             metadata={
@@ -494,7 +582,7 @@ class HallucinationCheckerEnvironment(Environment):
                     "query": query,
                     "total_results": summary["count"],
                 },
-            }
+            },
         )
 
     def _handle_courtlistener_opinion_action(self, action: Action) -> Observation:
@@ -502,7 +590,8 @@ class HallucinationCheckerEnvironment(Environment):
 
         if not opinion_id:
             return _error_observation(
-                "ACCESS_COURTLISTENER_OPINION", "missing opinion_id",
+                "ACCESS_COURTLISTENER_OPINION",
+                "missing opinion_id",
                 {"error": "missing opinion_id", "opinion_id": None, "opinion": None},
                 opinion_id=None,
             )
@@ -510,13 +599,16 @@ class HallucinationCheckerEnvironment(Environment):
             opinion = fetch_opinion(opinion_id)
         except Exception as exc:
             return _error_observation(
-                "ACCESS_COURTLISTENER_OPINION", str(exc),
+                "ACCESS_COURTLISTENER_OPINION",
+                str(exc),
                 {"error": str(exc), "opinion_id": opinion_id, "opinion": None},
                 opinion_id=opinion_id,
             )
 
         # Store full opinion to disk (filename = opinion_id)
-        safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(opinion_id))
+        safe_id = "".join(
+            c if c.isalnum() or c in "-_" else "_" for c in str(opinion_id)
+        )
         cache_path = os.path.join(self.opinion_cache_dir, f"{safe_id}.json")
         try:
             with open(cache_path, "w") as f:
@@ -533,7 +625,11 @@ class HallucinationCheckerEnvironment(Environment):
         case_name = opinion.get("case_name", "") if isinstance(opinion, dict) else ""
         self.document_manager.register_opinion(opinion_id, plain)
         # Return observation with snippet only (not full opinion)
-        snippet = (plain[: self.OPINION_SNIPPET_LENGTH] + "...") if len(plain) > self.OPINION_SNIPPET_LENGTH else plain
+        snippet = (
+            (plain[: self.OPINION_SNIPPET_LENGTH] + "...")
+            if len(plain) > self.OPINION_SNIPPET_LENGTH
+            else plain
+        )
         return Observation(
             result={
                 "action_type": "ACCESS_COURTLISTENER_OPINION",
@@ -550,32 +646,50 @@ class HallucinationCheckerEnvironment(Environment):
                 "action_type": "ACCESS_COURTLISTENER_OPINION",
                 "opinion_id": opinion_id,
                 "stored_path": cache_path,
-            }
+            },
         )
 
-    def _handle_courtlistener_citation_lookup_action(self, action: Action) -> Observation:
+    def _handle_courtlistener_citation_lookup_action(
+        self, action: Action
+    ) -> Observation:
         cite = (getattr(action, "cite", "") or "").strip()
-        result = {"action_type": "COURTLISTENER_CITATION_LOOKUP", "cite": cite, "citations": [], "results": []}
+        result = {
+            "action_type": "COURTLISTENER_CITATION_LOOKUP",
+            "cite": cite,
+            "citations": [],
+            "results": [],
+        }
         if not cite:
             return _error_observation(
-                "COURTLISTENER_CITATION_LOOKUP", "cite is required",
-                {**result, "error": "cite is required"}, cite=cite,
+                "COURTLISTENER_CITATION_LOOKUP",
+                "cite is required",
+                {**result, "error": "cite is required"},
+                cite=cite,
             )
         try:
             hits = lookup_citation(cite)
         except Exception as exc:
             return _error_observation(
-                "COURTLISTENER_CITATION_LOOKUP", str(exc),
-                {**result, "results": None, "error": str(exc)}, cite=cite,
+                "COURTLISTENER_CITATION_LOOKUP",
+                str(exc),
+                {**result, "results": None, "error": str(exc)},
+                cite=cite,
             )
         result["results"] = hits
-        result["citations"] = [item.get("citation") for item in hits if isinstance(item, dict) and item.get("citation")]
-        return Observation(result=result, metadata={"action_type": "COURTLISTENER_CITATION_LOOKUP", "cite": cite})
+        result["citations"] = [
+            item.get("citation")
+            for item in hits
+            if isinstance(item, dict) and item.get("citation")
+        ]
+        return Observation(
+            result=result,
+            metadata={"action_type": "COURTLISTENER_CITATION_LOOKUP", "cite": cite},
+        )
 
     def _get_searchable_opinion_text(self, opinion: Any) -> str:
         if not isinstance(opinion, dict):
             return str(opinion)
-        
+
         # Fall back to HTML/XML fields; strip tags for searchable text
         for key in ("html_lawbox", "html", "html_with_citations", "xml_harvard"):
             raw = opinion.get(key) or ""
@@ -601,21 +715,40 @@ class HallucinationCheckerEnvironment(Environment):
         # The metadata error is a short code; the result carries the readable message.
         if not opinion_id:
             return _error_observation(
-                "SEARCH_LOCAL_OPINION", "missing_opinion_id",
-                {"action_type": "SEARCH_LOCAL_OPINION", "opinion_id": None, "snippet": None, "error": "missing opinion_id"},
+                "SEARCH_LOCAL_OPINION",
+                "missing_opinion_id",
+                {
+                    "action_type": "SEARCH_LOCAL_OPINION",
+                    "opinion_id": None,
+                    "snippet": None,
+                    "error": "missing opinion_id",
+                },
             )
         if not search_string:
             return _error_observation(
-                "SEARCH_LOCAL_OPINION", "missing_search_string",
-                {"action_type": "SEARCH_LOCAL_OPINION", "opinion_id": opinion_id, "snippet": None, "error": "missing search_string"},
+                "SEARCH_LOCAL_OPINION",
+                "missing_search_string",
+                {
+                    "action_type": "SEARCH_LOCAL_OPINION",
+                    "opinion_id": opinion_id,
+                    "snippet": None,
+                    "error": "missing search_string",
+                },
             )
-        safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(opinion_id))
+        safe_id = "".join(
+            c if c.isalnum() or c in "-_" else "_" for c in str(opinion_id)
+        )
         cache_path = os.path.join(self.opinion_cache_dir, f"{safe_id}.json")
         if not os.path.isfile(cache_path):
             return _error_observation(
-                "SEARCH_LOCAL_OPINION", "not_cached",
-                {"action_type": "SEARCH_LOCAL_OPINION", "opinion_id": opinion_id, "snippet": None,
-                 "error": "opinion not in cache (fetch with ACCESS_COURTLISTENER_OPINION first)"},
+                "SEARCH_LOCAL_OPINION",
+                "not_cached",
+                {
+                    "action_type": "SEARCH_LOCAL_OPINION",
+                    "opinion_id": opinion_id,
+                    "snippet": None,
+                    "error": "opinion not in cache (fetch with ACCESS_COURTLISTENER_OPINION first)",
+                },
             )
         try:
             with open(cache_path) as f:
@@ -623,8 +756,14 @@ class HallucinationCheckerEnvironment(Environment):
         except Exception as e:
             logger.warning(f"Failed to read opinion cache {cache_path}: {e}")
             return _error_observation(
-                "SEARCH_LOCAL_OPINION", "read_error",
-                {"action_type": "SEARCH_LOCAL_OPINION", "opinion_id": opinion_id, "snippet": None, "error": str(e)},
+                "SEARCH_LOCAL_OPINION",
+                "read_error",
+                {
+                    "action_type": "SEARCH_LOCAL_OPINION",
+                    "opinion_id": opinion_id,
+                    "snippet": None,
+                    "error": str(e),
+                },
             )
         plain = self._get_searchable_opinion_text(opinion)
         # Normalize curly quotes/apostrophes to straight so brief and opinion match (U+2019 vs U+0027, etc.)
@@ -643,27 +782,53 @@ class HallucinationCheckerEnvironment(Environment):
         # 2) If no exact match, use fuzzy matching (sliding window)
         if not indices:
             indices = self._fuzzy_find_in_text(
-                plain, search_string, self.SEARCH_LOCAL_OPINION_MAX_SNIPPETS,
-                self.SEARCH_SNIPPET_CONTEXT, self.SEARCH_LOCAL_OPINION_FUZZY_MIN_RATIO,
+                plain,
+                search_string,
+                self.SEARCH_LOCAL_OPINION_MAX_SNIPPETS,
+                self.SEARCH_SNIPPET_CONTEXT,
+                self.SEARCH_LOCAL_OPINION_FUZZY_MIN_RATIO,
                 self.SEARCH_LOCAL_OPINION_FUZZY_STEP,
             )
         if not indices:
             return Observation(
-                result={"action_type": "SEARCH_LOCAL_OPINION", "opinion_id": opinion_id, "search_string": search_string, "snippet": None, "found": False},
+                result={
+                    "action_type": "SEARCH_LOCAL_OPINION",
+                    "opinion_id": opinion_id,
+                    "search_string": search_string,
+                    "snippet": None,
+                    "found": False,
+                },
                 metadata={"action_type": "SEARCH_LOCAL_OPINION", "found": False},
             )
         snippets = []
         for i, idx in enumerate(indices):
             start = max(0, idx - self.SEARCH_SNIPPET_CONTEXT)
-            end = min(len(plain), idx + len(search_string) + self.SEARCH_SNIPPET_CONTEXT)
-            part = (("..." if start > 0 else "") + plain[start:end] + ("..." if end < len(plain) else ""))
+            end = min(
+                len(plain), idx + len(search_string) + self.SEARCH_SNIPPET_CONTEXT
+            )
+            part = (
+                ("..." if start > 0 else "")
+                + plain[start:end]
+                + ("..." if end < len(plain) else "")
+            )
             if len(indices) > 1:
                 part = f"--- Match {i + 1} ---\n{part}"
             snippets.append(part)
         snippet = "\n\n".join(snippets)
         return Observation(
-            result={"action_type": "SEARCH_LOCAL_OPINION", "opinion_id": opinion_id, "search_string": search_string, "snippet": snippet, "found": True, "match_count": len(indices)},
-            metadata={"action_type": "SEARCH_LOCAL_OPINION", "found": True, "match_count": len(indices)},
+            result={
+                "action_type": "SEARCH_LOCAL_OPINION",
+                "opinion_id": opinion_id,
+                "search_string": search_string,
+                "snippet": snippet,
+                "found": True,
+                "match_count": len(indices),
+            },
+            metadata={
+                "action_type": "SEARCH_LOCAL_OPINION",
+                "found": True,
+                "match_count": len(indices),
+            },
         )
 
     def _fuzzy_find_in_text(
@@ -674,7 +839,7 @@ class HallucinationCheckerEnvironment(Environment):
         context_chars: int,
         min_ratio: float,
         step: int,
-    ) -> List[int]:
+    ) -> list[int]:
         """Return up to max_snippets start indices of best fuzzy matches of search_string in plain (sliding window)."""
         if not search_string or not plain:
             return []
@@ -686,7 +851,7 @@ class HallucinationCheckerEnvironment(Environment):
         if window_len > len(plain):
             window_len = len(plain)
         step = max(1, min(step, window_len // 2))
-        candidates: List[Tuple[int, float]] = []
+        candidates: list[tuple[int, float]] = []
         for start in range(0, len(plain) - window_len + 1, step):
             window = plain[start : start + window_len].lower()
             ratio = SequenceMatcher(None, q, window).ratio()
@@ -696,7 +861,7 @@ class HallucinationCheckerEnvironment(Environment):
             return []
         # Sort by ratio descending, then take top max_snippets; optionally merge overlapping
         candidates.sort(key=lambda x: -x[1])
-        chosen: List[int] = []
+        chosen: list[int] = []
         for pos, _ in candidates:
             if len(chosen) >= max_snippets:
                 break
@@ -708,19 +873,29 @@ class HallucinationCheckerEnvironment(Environment):
         return chosen
 
     def _handle_read_document_action(self, action: Action) -> Observation:
-        opinion_id = (getattr(action, "opinion_id", None) or getattr(action, "document_id", "") or "").strip()
+        opinion_id = (
+            getattr(action, "opinion_id", None)
+            or getattr(action, "document_id", "")
+            or ""
+        ).strip()
         start_line = getattr(action, "start_line", 0)
         num_lines = getattr(action, "num_lines", 50)
         if not opinion_id:
             return _error_observation(
-                "READ_DOCUMENT", "missing_opinion_id",
-                {"action_type": "READ_DOCUMENT", "error": "missing opinion_id", "content": None},
+                "READ_DOCUMENT",
+                "missing_opinion_id",
+                {
+                    "action_type": "READ_DOCUMENT",
+                    "error": "missing opinion_id",
+                    "content": None,
+                },
             )
         key = self.document_manager.resolve_document_id(opinion_id)
         if key is None:
             available = list(self.document_manager.documents)
             return _error_observation(
-                "READ_DOCUMENT", "not_found",
+                "READ_DOCUMENT",
+                "not_found",
                 {
                     "action_type": "READ_DOCUMENT",
                     "opinion_id": opinion_id,
@@ -734,10 +909,14 @@ class HallucinationCheckerEnvironment(Environment):
             num_lines = max(1, min(500, int(num_lines)))
         except (TypeError, ValueError):
             start_line, num_lines = 0, 50
-        text, actual_start, actual_end, total_lines = read_document_content(content, start_line, num_lines)
+        text, actual_start, actual_end, total_lines = read_document_content(
+            content, start_line, num_lines
+        )
         # Log what is being returned for READ_DOCUMENT
         preview_len = 400
-        content_preview = (text[:preview_len] + "...") if len(text) > preview_len else text
+        content_preview = (
+            (text[:preview_len] + "...") if len(text) > preview_len else text
+        )
         logger.info(
             "READ_DOCUMENT result: opinion_id=%s lines %s-%s of %s, content_length=%d. Preview: %s",
             key,
@@ -765,9 +944,13 @@ class HallucinationCheckerEnvironment(Environment):
         position = getattr(action, "position", None)
         if not operation:
             return _error_observation(
-                "EDIT_SCRATCHPAD", "missing_operation",
-                {"action_type": "EDIT_SCRATCHPAD", "error": "missing operation",
-                 "scratchpad": self.document_manager.get_scratchpad_content()},
+                "EDIT_SCRATCHPAD",
+                "missing_operation",
+                {
+                    "action_type": "EDIT_SCRATCHPAD",
+                    "error": "missing operation",
+                    "scratchpad": self.document_manager.get_scratchpad_content(),
+                },
             )
         ok = self.document_manager.edit_scratchpad(operation, content, position)
         scratchpad_now = self.document_manager.get_scratchpad_content()
@@ -775,7 +958,11 @@ class HallucinationCheckerEnvironment(Environment):
             # Not routed through _error_observation: this metadata reports
             # success=False and has never carried an "error" key.
             return Observation(
-                result={"action_type": "EDIT_SCRATCHPAD", "error": "edit failed", "scratchpad": scratchpad_now},
+                result={
+                    "action_type": "EDIT_SCRATCHPAD",
+                    "error": "edit failed",
+                    "scratchpad": scratchpad_now,
+                },
                 metadata={"action_type": "EDIT_SCRATCHPAD", "success": False},
             )
         return Observation(
@@ -789,7 +976,7 @@ class HallucinationCheckerEnvironment(Environment):
         )
 
     def get_environment_description(self) -> str:
-        description =f"""
+        description = f"""
 You are expected to extract all CASE CITATIONS (no other types of citations like regulations, statutes, or other legal sources) and to:
 1) Verify Citation Existence: Determine whether the reporter citations correspond to real, verifiable legal cases.
 2) Verify Citation Consistency: Determine whether the case names before the reporter citations and the reporter citations themselves refer to the same legal case.
@@ -798,34 +985,31 @@ You are expected to extract all CASE CITATIONS (no other types of citations like
 5) Verify Contextual Accuracy: Assess whether the quoted language or proposition is presented in a manner consistent with its original context within the cited opinions.
 
 BRIEF TEXT: {self.brief_text}\n\n"""
-                
+
         return description
 
     def get_action_selection_environment_description(self) -> str:
         return self.get_environment_description()
 
-
     def get_response_requirements(self) -> str:
         return get_response_requirements()
-    
+
     def get_search_capabilities(self) -> str:
         return get_search_capabilities_open_search()
-    
-    def get_search_history(self) -> List[Dict[str, Any]]:
+
+    def get_search_history(self) -> list[dict[str, Any]]:
         return self.search_history.copy()
 
     def is_done(self) -> bool:
         if self.is_truncated():
             return True
-        
+
         # Check if a final prediction was made (base class sets terminated=True)
-        if self.is_terminated():
-            return True
-        
-        return False
+        return bool(self.is_terminated())
+
     def get_initial_observation(self) -> Observation:
         return self.initial_observation
-    
+
     def reset(self):
         super().reset()
         self.current_step = 0
@@ -836,16 +1020,18 @@ BRIEF TEXT: {self.brief_text}\n\n"""
             result="Initial State.",
             metadata={
                 "max_steps": self.max_steps,
-                "available_actions": [action_type.value for action_type in self.action_space]
-            }
+                "available_actions": [
+                    action_type.value for action_type in self.action_space
+                ],
+            },
         )
         logger.info("Environment reset")
-    
-    def get_stats(self) -> Dict[str, Any]:
+
+    def get_stats(self) -> dict[str, Any]:
         return {
             "current_step": self.current_step,
             "max_steps": self.max_steps,
             "has_answer": bool(self.answer),
             "num_searches": len(self.search_history),
-            "is_done": self.is_done()
+            "is_done": self.is_done(),
         }

@@ -8,9 +8,10 @@ failure the agent re-asks the model with the validation error (see
 import json
 import logging
 import re
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, field_validator
+from pydantic import ValidationError as ValidationError
 
 from .actions import ActionType
 
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 # --- JSON and prediction response helpers ---
 
 
-def _match_braces(text: str, start: int) -> Optional[str]:
+def _match_braces(text: str, start: int) -> str | None:
     """Return the balanced {...} object starting at text[start], or None."""
     depth = 0
     for i in range(start, len(text)):
@@ -29,11 +30,11 @@ def _match_braces(text: str, start: int) -> Optional[str]:
         elif text[i] == "}":
             depth -= 1
             if depth == 0:
-                return text[start:i + 1]
+                return text[start : i + 1]
     return None
 
 
-def extract_json_from_text(text: str) -> Optional[str]:
+def extract_json_from_text(text: str) -> str | None:
     """Extract the first JSON object from text, preferring one inside a ```json fence."""
     fenced = re.search(r"```(?:json)?\s*\{", text, flags=re.IGNORECASE)
     if fenced:
@@ -44,7 +45,9 @@ def extract_json_from_text(text: str) -> Optional[str]:
     return _match_braces(text, start) if start != -1 else None
 
 
-def parse_json_from_text(text: str, response_name: str = "response") -> Optional[Dict[str, Any]]:
+def parse_json_from_text(
+    text: str, response_name: str = "response"
+) -> dict[str, Any] | None:
     """Parse the first JSON object in text (tolerating trailing commas).
 
     Returns None if no object is found; raises ValueError if one is found but invalid.
@@ -58,10 +61,12 @@ def parse_json_from_text(text: str, response_name: str = "response") -> Optional
         try:
             return json.loads(json_str.replace(",}", "}").replace(",]", "]"))
         except json.JSONDecodeError:
-            raise ValueError(f"Invalid JSON in {response_name} response: {e}")
+            raise ValueError(f"Invalid JSON in {response_name} response: {e}") from e
 
 
-def parse_json_response(response: str, response_name: str = "response") -> Dict[str, Any]:
+def parse_json_response(
+    response: str, response_name: str = "response"
+) -> dict[str, Any]:
     """Parse a JSON response; raises ValueError if empty or no valid JSON object is present."""
     if not response or not response.strip():
         raise ValueError(f"Empty {response_name} response from model")
@@ -72,7 +77,7 @@ def parse_json_response(response: str, response_name: str = "response") -> Dict[
     return data
 
 
-def parse_prediction_response(response: str) -> Tuple[str, float]:
+def parse_prediction_response(response: str) -> tuple[str, float]:
     """Parse {"action": {"response": ...}, "confidence": ...}; list responses become JSON strings.
 
     Raises ValueError if the response is empty, invalid JSON, or has an empty prediction.
@@ -80,7 +85,9 @@ def parse_prediction_response(response: str) -> Tuple[str, float]:
     data = parse_json_response(response, "prediction")
     raw_prediction = data.get("action", {}).get("response", "")
     if isinstance(raw_prediction, list):
-        prediction = json.dumps(raw_prediction)  # Preserve as JSON string for downstream parsing
+        prediction = json.dumps(
+            raw_prediction
+        )  # Preserve as JSON string for downstream parsing
     else:
         prediction = str(raw_prediction).strip() if raw_prediction else ""
     confidence = float(data.get("confidence", 0.0))
@@ -114,87 +121,181 @@ def _non_empty(field_name: str, example: str):
     @classmethod
     def validate(cls, v: str) -> str:
         if not (v and str(v).strip()):
-            raise ValueError(f"{field_name} must be a non-empty string (e.g. {example})")
+            raise ValueError(
+                f"{field_name} must be a non-empty string (e.g. {example})"
+            )
         return str(v).strip()
+
     return validate
 
 
 class ProvideFinalResponseAction(BaseModel):
-    action_type: Literal[ActionType.PROVIDE_FINAL_RESPONSE.value] = Field(..., description="The type of action")
-    response: Union[str, List[str]] = Field(
+    action_type: Literal[ActionType.PROVIDE_FINAL_RESPONSE.value] = Field(
+        ..., description="The type of action"
+    )
+    response: str | list[str] = Field(
         ...,
-        description="The final response: a string, or a list of hallucinated citations/sentences"
+        description="The final response: a string, or a list of hallucinated citations/sentences",
     )
 
+
 class ThinkAction(BaseModel):
-    action_type: Literal[ActionType.THINK.value] = Field(..., description="The type of action")
-    thought: str = Field(..., description="Your reasoning, analysis, or thought process about the current situation")
+    action_type: Literal[ActionType.THINK.value] = Field(
+        ..., description="The type of action"
+    )
+    thought: str = Field(
+        ...,
+        description="Your reasoning, analysis, or thought process about the current situation",
+    )
+
 
 class OpenWebSearchAction(BaseModel):
-    action_type: Literal[ActionType.OPEN_WEB_SEARCH.value] = Field(..., description="The type of action")
-    query: str = Field(..., description="The search query to find relevant web information (must be non-empty, e.g. a citation or search phrase)")
-    search_type: Optional[str] = Field(None, description="The type of search to perform. Options: 'web', 'news', 'google_scholar' (default: 'web')")
-    num_results: Optional[int] = Field(None, description="Number of results to return (default: 10)")
-    news_source: Optional[str] = Field(None, description="News source to use for news searches. Options: 'serpapi', 'mediastack' (default: 'serpapi')")
-    cutoff_date: Optional[str] = Field(None, description="Cutoff date for search results (YYYY-MM-DD format). Only results published on or before this date will be returned. Optional.")
-    exclude_undated: Optional[bool] = Field(None, description="If true, exclude results without publication dates (default: true)")
+    action_type: Literal[ActionType.OPEN_WEB_SEARCH.value] = Field(
+        ..., description="The type of action"
+    )
+    query: str = Field(
+        ...,
+        description="The search query to find relevant web information (must be non-empty, e.g. a citation or search phrase)",
+    )
+    search_type: str | None = Field(
+        None,
+        description="The type of search to perform. Options: 'web', 'news', 'google_scholar' (default: 'web')",
+    )
+    num_results: int | None = Field(
+        None, description="Number of results to return (default: 10)"
+    )
+    news_source: str | None = Field(
+        None,
+        description="News source to use for news searches. Options: 'serpapi', 'mediastack' (default: 'serpapi')",
+    )
+    cutoff_date: str | None = Field(
+        None,
+        description="Cutoff date for search results (YYYY-MM-DD format). Only results published on or before this date will be returned. Optional.",
+    )
+    exclude_undated: bool | None = Field(
+        None,
+        description="If true, exclude results without publication dates (default: true)",
+    )
 
     query_non_empty = _non_empty("query", "a citation or search phrase")
 
-class OpenCourtListenerSearchAction(BaseModel):
-    action_type: Literal[ActionType.OPEN_COURTLISTENER_SEARCH.value] = Field(..., description="The type of action")
-    query: str = Field(..., description="The search query to find relevant legal cases and documents (must be non-empty, e.g. a citation like '965 F.2d 962' or a case name)")
-    search_type: Optional[str] = Field(None, description="The type of search to perform. Options: 'opinions', 'cases', 'dockets', 'filings', 'judges', 'oral_arguments' (default: 'opinions')")
-    court: Optional[str] = Field(None, description="The court to search (e.g., 'scotus', 'ca1', 'ca2') (default: 'scotus')")
-    date_filter: Optional[Dict[str, Any]] = Field(None, description="Date filter with 'field' and 'before'/'after' keys (e.g., {'field': 'date_filed', 'before': '2022-01-01', 'after': '2021-01-01'}). Dates in YYYY-MM-DD format. Only 'date_filed' field is supported.")
 
-    query_non_empty = _non_empty("query", "a citation like '965 F.2d 962' or a case name")
+class OpenCourtListenerSearchAction(BaseModel):
+    action_type: Literal[ActionType.OPEN_COURTLISTENER_SEARCH.value] = Field(
+        ..., description="The type of action"
+    )
+    query: str = Field(
+        ...,
+        description="The search query to find relevant legal cases and documents (must be non-empty, e.g. a citation like '965 F.2d 962' or a case name)",
+    )
+    search_type: str | None = Field(
+        None,
+        description="The type of search to perform. Options: 'opinions', 'cases', 'dockets', 'filings', 'judges', 'oral_arguments' (default: 'opinions')",
+    )
+    court: str | None = Field(
+        None,
+        description="The court to search (e.g., 'scotus', 'ca1', 'ca2') (default: 'scotus')",
+    )
+    date_filter: dict[str, Any] | None = Field(
+        None,
+        description="Date filter with 'field' and 'before'/'after' keys (e.g., {'field': 'date_filed', 'before': '2022-01-01', 'after': '2021-01-01'}). Dates in YYYY-MM-DD format. Only 'date_filed' field is supported.",
+    )
+
+    query_non_empty = _non_empty(
+        "query", "a citation like '965 F.2d 962' or a case name"
+    )
+
 
 class CourtListenerCitationLookupAction(BaseModel):
-    action_type: Literal[ActionType.COURTLISTENER_CITATION_LOOKUP.value] = Field(..., description="The type of action")
-    cite: str = Field(..., description="The reporter citation to look up (e.g. '934 F.3d 53', '143 S. Ct. 1196')")
+    action_type: Literal[ActionType.COURTLISTENER_CITATION_LOOKUP.value] = Field(
+        ..., description="The type of action"
+    )
+    cite: str = Field(
+        ...,
+        description="The reporter citation to look up (e.g. '934 F.3d 53', '143 S. Ct. 1196')",
+    )
 
     cite_non_empty = _non_empty("cite", "'965 F.2d 962' or '143 S. Ct. 1196'")
 
+
 class AccessCourtListenerOpinionAction(BaseModel):
-    action_type: Literal[ActionType.ACCESS_COURTLISTENER_OPINION.value] = Field(..., description="The type of action")
-    opinion_id: str = Field(..., description="The CourtListener opinion ID (obtained from OPEN_COURTLISTENER_SEARCH results)")
+    action_type: Literal[ActionType.ACCESS_COURTLISTENER_OPINION.value] = Field(
+        ..., description="The type of action"
+    )
+    opinion_id: str = Field(
+        ...,
+        description="The CourtListener opinion ID (obtained from OPEN_COURTLISTENER_SEARCH results)",
+    )
+
 
 class SearchLocalOpinionAction(BaseModel):
-    action_type: Literal[ActionType.SEARCH_LOCAL_OPINION.value] = Field(..., description="The type of action")
-    opinion_id: str = Field(..., description="The CourtListener opinion ID (from a previous ACCESS_COURTLISTENER_OPINION call)")
-    search_string: str = Field(..., description="The string to search for in the opinion text")
+    action_type: Literal[ActionType.SEARCH_LOCAL_OPINION.value] = Field(
+        ..., description="The type of action"
+    )
+    opinion_id: str = Field(
+        ...,
+        description="The CourtListener opinion ID (from a previous ACCESS_COURTLISTENER_OPINION call)",
+    )
+    search_string: str = Field(
+        ..., description="The string to search for in the opinion text"
+    )
+
 
 class ReadDocumentAction(BaseModel):
-    action_type: Literal[ActionType.READ_DOCUMENT.value] = Field(..., description="The type of action")
-    opinion_id: str = Field(..., description="The opinion to read: use opinion_<id> (e.g. opinion_9001448) or just the numeric id (e.g. 9001448) from a previous ACCESS_COURTLISTENER_OPINION.")
-    start_line: int = Field(..., description="The starting line number to read from (0-indexed). Use 0 for the first line.")
-    num_lines: int = Field(..., description="The number of lines to read from the document starting from start_line. Must be a positive integer.")
+    action_type: Literal[ActionType.READ_DOCUMENT.value] = Field(
+        ..., description="The type of action"
+    )
+    opinion_id: str = Field(
+        ...,
+        description="The opinion to read: use opinion_<id> (e.g. opinion_9001448) or just the numeric id (e.g. 9001448) from a previous ACCESS_COURTLISTENER_OPINION.",
+    )
+    start_line: int = Field(
+        ...,
+        description="The starting line number to read from (0-indexed). Use 0 for the first line.",
+    )
+    num_lines: int = Field(
+        ...,
+        description="The number of lines to read from the document starting from start_line. Must be a positive integer.",
+    )
+
 
 class EditScratchpadAction(BaseModel):
-    action_type: Literal[ActionType.EDIT_SCRATCHPAD.value] = Field(..., description="The type of action")
-    operation: str = Field(..., description="The operation to perform on the scratchpad. Options: 'append', 'insert', 'replace', 'clear'")
-    content: str = Field(..., description="The content to add, insert, or replace in the scratchpad")
-    position: Optional[int] = Field(None, description="The position for insert/replace operations (0-indexed). Required for 'insert' and 'replace' operations. Ignored for 'append' and 'clear' operations. Optional.")
+    action_type: Literal[ActionType.EDIT_SCRATCHPAD.value] = Field(
+        ..., description="The type of action"
+    )
+    operation: str = Field(
+        ...,
+        description="The operation to perform on the scratchpad. Options: 'append', 'insert', 'replace', 'clear'",
+    )
+    content: str = Field(
+        ..., description="The content to add, insert, or replace in the scratchpad"
+    )
+    position: int | None = Field(
+        None,
+        description="The position for insert/replace operations (0-indexed). Required for 'insert' and 'replace' operations. Ignored for 'append' and 'clear' operations. Optional.",
+    )
 
-ActionUnion = Union[
-    ProvideFinalResponseAction,
-    ThinkAction,
-    OpenWebSearchAction,
-    OpenCourtListenerSearchAction,
-    CourtListenerCitationLookupAction,
-    AccessCourtListenerOpinionAction,
-    SearchLocalOpinionAction,
-    ReadDocumentAction,
-    EditScratchpadAction
-]
+
+ActionUnion = (
+    ProvideFinalResponseAction
+    | ThinkAction
+    | OpenWebSearchAction
+    | OpenCourtListenerSearchAction
+    | CourtListenerCitationLookupAction
+    | AccessCourtListenerOpinionAction
+    | SearchLocalOpinionAction
+    | ReadDocumentAction
+    | EditScratchpadAction
+)
+
 
 class ActionChoice(BaseModel):
     """The model's action-selection response: {"action": {"action_type": ..., <params>}, ...}."""
+
     action: ActionUnion = Field(..., discriminator="action_type")
 
 
-def parse_action_response(response: str) -> Tuple[str, Dict[str, Any]]:
+def parse_action_response(response: str) -> tuple[str, dict[str, Any]]:
     """Parse and validate an action-selection response into (action_type, parameters).
 
     Parameters omitted by the model are left out so Action class defaults apply.
@@ -207,8 +308,8 @@ def parse_action_response(response: str) -> Tuple[str, Dict[str, Any]]:
 
 
 def normalize_action_parameters_for_construction(
-    action_type: str, parameters: Dict[str, Any]
-) -> Dict[str, Any]:
+    action_type: str, parameters: dict[str, Any]
+) -> dict[str, Any]:
     """
     Normalize parameters so they match Action class constructors.
     E.g. ProvideFinalResponse expects response: str; we accept list from the model and store as JSON array string.
@@ -246,7 +347,10 @@ def normalize_action_parameters_for_construction(
             )
         params["cite"] = str(c).strip()
     # READ_DOCUMENT: accept opinion_id; allow legacy document_id for backward compatibility
-    if action_type == ActionType.READ_DOCUMENT.value:
-        if "opinion_id" not in params and "document_id" in params:
-            params["opinion_id"] = params.pop("document_id")
+    if (
+        action_type == ActionType.READ_DOCUMENT.value
+        and "opinion_id" not in params
+        and "document_id" in params
+    ):
+        params["opinion_id"] = params.pop("document_id")
     return params

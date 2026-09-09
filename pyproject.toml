@@ -20,3 +20,24 @@ dependencies = [
 
 [tool.uv]
 package = false
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.6",
+]
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "PIE"]
+# The formatter handles code layout; do not reflow model-facing prompt strings.
+ignore = ["E501"]
+# En dashes are intentional in existing prompts and prose.
+allowed-confusables = ["–"]
+
+[tool.ruff.lint.per-file-ignores]
+# Credentials and offline guards must be set before instrumented imports.
+"benchmark_agent/tracing.py" = ["E402"]
+"scripts/smoke/baseline.py" = ["E402"]
+"scripts/smoke/offline_checks.py" = ["E402"]

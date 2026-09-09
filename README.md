@@ -217,6 +217,23 @@ uv run --locked python -m benchmark_agent.run --config-name=legal_hallucination_
 - `environment.max_steps=` — max actions per episode (0 = non-agentic baseline: direct prediction without tool actions or belief updates)
 - `test_run=true` — write outputs to `test/` subfolders
 
+## Code style
+
+Ruff is installed with the development dependencies by `uv sync --locked`.
+
+```bash
+uv run --locked ruff check .
+uv run --locked ruff format --check .
+
+# Apply lint fixes and formatting
+uv run --locked ruff check . --fix
+uv run --locked ruff format .
+```
+
+The configuration targets Python 3.12. Long prompt strings, intentional en dashes,
+and imports that must follow environment setup have documented exceptions in
+`pyproject.toml`.
+
 ## Regression Checks
 
 Both checks are offline: they make no API calls and block network access.

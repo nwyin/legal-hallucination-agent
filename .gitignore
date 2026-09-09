@@ -13,3 +13,6 @@ __pycache__/
 
 # Synthetic live smoke artifacts
 outputs/smoke/
+
+# Ruff cache
+.ruff_cache/
