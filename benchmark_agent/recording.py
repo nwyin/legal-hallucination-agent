@@ -412,7 +412,7 @@ def log_initial_state(agent: "Agent", environment: "Environment", observation, t
         
     log_section("AGENT CONFIGURATION")
     logger.info(f"Agent Type: {agent.__class__.__name__}")
-    logger.info(f"Model: {agent.model_id} ({agent.provider})")
+    logger.info(f"Model: {agent.model_id}")
     logger.info(f"Temperature: {agent.temperature}")
     logger.info(f"Max Tokens Config: {getattr(agent, 'max_tokens_config', 'N/A')}")
     logger.info(f"Action Space: {[a.value for a in agent.action_space]}")

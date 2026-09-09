@@ -179,7 +179,7 @@ uv run --locked python -m benchmark_agent.run --config-name=legal_hallucination_
 **Common overrides:**
 - `data.example_id=` — run a single example instead of the full dataset
 - `data.limit=` — cap the number of examples in batch mode
-- `agent.model.model_id=` / `agent.model.provider=` — change the LLM
+- `agent.model.model_id=` — change the LLM
 - `environment.max_steps=` — max actions per episode (0 = non-agentic baseline: direct prediction without tool actions or belief updates)
 - `test_run=true` — write outputs to `test/` subfolders
 
@@ -208,7 +208,6 @@ For OpenRouter models:
 ```yaml
 agent:
   model:
-    provider: "openrouter"
     model_id: "openai/gpt-4o"
     temperature: 0.8
     max_tokens: 10000
@@ -220,7 +219,6 @@ Another example using a different OpenRouter model ID:
 ```yaml
 agent:
   model:
-    provider: "openrouter"
     model_id: "deepseek/deepseek-r1"
     temperature: 0.8
     max_tokens: 4096
@@ -236,7 +234,6 @@ Use any OpenRouter model ID you have access to.
 | `data.output_path` | Path to write output JSONL |
 | `data.id_field` | Field in JSONL used as example ID |
 | `data.skip_completed` | Skip examples already in output file |
-| `agent.model.provider` | LLM provider (`openrouter`) |
 | `agent.thinking_enabled` | Enable extended thinking / chain-of-thought |
 | `agent.open_web_search_enabled` | Enable web search tool |
 | `agent.courtlistener_search_enabled` | Enable CourtListener search |
@@ -256,6 +253,6 @@ outputs/
     search_results.log        # Search queries and results
 
 metrics/
-└── legal_hallucination_checker/{provider}/{model_id}/{method}/
+└── legal_hallucination_checker/{model_id}/{method}/
     └── {example_id}.json     # Per-episode metrics
 ```

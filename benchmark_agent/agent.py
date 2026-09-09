@@ -49,7 +49,6 @@ class Agent:
                  environment: Environment, 
                  model_api: ModelAPI,
                  model_id: str,
-                 provider: str,
                  max_tokens: int = 1000,
                  temperature: float = 0.3,
                  temperature_action_selection: float = None,
@@ -79,7 +78,6 @@ class Agent:
         self.environment = environment
         self.model_api = model_api
         self.model_id = model_id
-        self.provider = provider
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.temperature_action_selection = temperature_action_selection if temperature_action_selection is not None else temperature
@@ -240,7 +238,6 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
         environment: Environment,
         model_api: ModelAPI,
         model_id: str,
-        provider: str,
         max_tokens: int = 2000,
         temperature: float = 0.7,
         seed: int = None,
@@ -254,7 +251,6 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
         prediction_prompt_constructor: PredictionPromptConstructor = None,
         max_tokens_config: Optional[Dict[str, int]] = None,
         belief_update_model_id: Optional[str] = None,
-        belief_update_provider: Optional[str] = None,
         belief_update_temperature: Optional[float] = None,
     ):
         """
@@ -264,7 +260,6 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             environment: The environment to interact with
             model_api: API for making LLM calls
             model_id: Model identifier
-            provider: Model provider (openrouter only)
             max_tokens: Maximum tokens for LLM responses
             temperature: Temperature for LLM generation
             seed: Seed for reproducible LLM outputs
@@ -277,32 +272,12 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             action_selection_prompt_constructor: Constructor for action selection prompts
             prediction_prompt_constructor: Constructor for prediction prompts
             belief_update_model_id: Optional model override for belief updates only
-            belief_update_provider: Optional provider override for belief updates only
             belief_update_temperature: Optional temperature override for belief updates only
         """
-        normalized_provider = (provider or "openrouter").lower().strip()
-        if normalized_provider != "openrouter":
-            logger.warning(
-                f"Provider '{provider}' is not supported in this project. "
-                "Forcing provider to 'openrouter' for single-provider setup."
-            )
-            normalized_provider = "openrouter"
-
-        normalized_belief_update_provider = (
-            (belief_update_provider or normalized_provider).lower().strip()
-        )
-        if normalized_belief_update_provider != "openrouter":
-            logger.warning(
-                f"belief_update_provider '{belief_update_provider}' is not supported. "
-                "Forcing belief update provider to 'openrouter'."
-            )
-            normalized_belief_update_provider = "openrouter"
-
         super().__init__(
             environment=environment,
             model_api=model_api,
             model_id=model_id,
-            provider=normalized_provider,
             max_tokens=max_tokens,
             temperature=temperature,
             seed=seed,
@@ -349,7 +324,6 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
         )
         self.max_tokens_config = max_tokens_config or {}
         self.belief_update_model_id = belief_update_model_id or self.model_id
-        self.belief_update_provider = normalized_belief_update_provider
         self.belief_update_temperature = (
             self.temperature if belief_update_temperature is None else belief_update_temperature
         )
@@ -412,17 +386,14 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
                 attempt_messages = messages + [{"role": "user", "content": reask_msg}]
 
             logger.info(
-                "Calling LLM for BOED belief update (attempt %s/%s) using model=%s provider=%s",
+                "Calling LLM for BOED belief update (attempt %s/%s) using model=%s",
                 attempt + 1,
                 max_belief_update_retries,
                 self.belief_update_model_id,
-                self.belief_update_provider,
             )
             response = self.model_api(
                 model_id=self.belief_update_model_id,
                 prompt=attempt_messages,
-                max_attempts=1,
-                provider=self.belief_update_provider,
                 max_tokens=belief_update_max_tokens,
                 temperature=self.belief_update_temperature,
                 seed=self.seed
@@ -654,7 +625,6 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             unified_guard = create_unified_action_guard(
                 model_api=self.model_api,
                 model_id=self.model_id,
-                provider=self.provider,
                 max_tokens=action_selection_max_tokens,
                 temperature=self.temperature,
                 num_reasks=3
@@ -682,8 +652,6 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
                 response = self.model_api(
                     model_id=self.model_id,
                     prompt=messages,
-                    max_attempts=1,
-                    provider=self.provider,
                     max_tokens=action_selection_max_tokens,
                     temperature=self.temperature,
                     seed=self.seed
@@ -703,8 +671,6 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
                         response2 = self.model_api(
                             model_id=self.model_id,
                             prompt=messages + [{"role": "user", "content": reask_content}],
-                            max_attempts=1,
-                            provider=self.provider,
                             max_tokens=action_selection_max_tokens,
                             temperature=self.temperature,
                             seed=self.seed
@@ -823,8 +789,6 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             prediction_kwargs = dict(
                 model_id=self.model_id,
                 prompt=prompt,
-                max_attempts=3,
-                provider=self.provider,
                 max_tokens=prediction_max_tokens,
                 temperature=0.1,  # Low temperature for consistent predictions
                 seed=self.seed,
@@ -895,7 +859,6 @@ class BOEDCitationTrackerAgent(BayesianOptimalExperimentalDesignAgent):
         environment: Environment,
         model_api: ModelAPI,
         model_id: str,
-        provider: str,
         max_tokens: int = 2000,
         temperature: float = 0.7,
         seed: int = None,
@@ -909,7 +872,6 @@ class BOEDCitationTrackerAgent(BayesianOptimalExperimentalDesignAgent):
         prediction_prompt_constructor: PredictionPromptConstructor = None,
         max_tokens_config: Optional[Dict[str, int]] = None,
         belief_update_model_id: Optional[str] = None,
-        belief_update_provider: Optional[str] = None,
         belief_update_temperature: Optional[float] = None,
     ):
         # No domain knowledge; use prior that asks for list described in words
@@ -922,7 +884,6 @@ class BOEDCitationTrackerAgent(BayesianOptimalExperimentalDesignAgent):
             environment=environment,
             model_api=model_api,
             model_id=model_id,
-            provider=provider,
             max_tokens=max_tokens,
             temperature=temperature,
             seed=seed,
@@ -936,7 +897,6 @@ class BOEDCitationTrackerAgent(BayesianOptimalExperimentalDesignAgent):
             prediction_prompt_constructor=pred_constructor,
             max_tokens_config=max_tokens_config,
             belief_update_model_id=belief_update_model_id,
-            belief_update_provider=belief_update_provider,
             belief_update_temperature=belief_update_temperature,
         )
         logger.info(

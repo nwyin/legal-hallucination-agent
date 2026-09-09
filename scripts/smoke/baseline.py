@@ -54,7 +54,7 @@ def main():
     logging.basicConfig(level=logging.INFO, filename=out / "execution.log", filemode="w")
     config = {
         "method": "boed_citation_tracker",
-        "model": {"provider": "openrouter", "model_id": "moonshotai/kimi-k2.5", "temperature": 0, "seed": 42},
+        "model": {"model_id": "moonshotai/kimi-k2.5", "temperature": 0, "seed": 42},
         "agent": {"thinking_enabled": True, "open_web_search_enabled": False,
                   "courtlistener_search_enabled": False, "courtlistener_opinion_access_enabled": False,
                   "max_tokens": {"action_selection": 2048, "belief_update": 2048, "prediction": 2048}},

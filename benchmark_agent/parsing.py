@@ -235,7 +235,7 @@ def normalize_yes_no_answers(answers: str) -> str:
 # --- Guardrails action parsing ---
 
 
-def create_model_callable(model_api, model_id: str, provider: str, max_tokens: int = 1000, temperature: float = 0.7):
+def create_model_callable(model_api, model_id: str, max_tokens: int = 1000, temperature: float = 0.7):
     """
     Create a callable function that wraps ModelAPI for Guardrails compatibility.
     
@@ -245,7 +245,6 @@ def create_model_callable(model_api, model_id: str, provider: str, max_tokens: i
     Args:
         model_api: Your ModelAPI instance
         model_id: The model ID to use
-        provider: The provider (openrouter)
         max_tokens: Maximum tokens for responses
         temperature: Temperature for generation
         
@@ -275,8 +274,6 @@ def create_model_callable(model_api, model_id: str, provider: str, max_tokens: i
             response = model_api(
                 model_id=model_id,
                 prompt=messages,  # Our ModelAPI expects prompt parameter
-                max_attempts=3,   # Guardrails handles retries
-                provider=provider,
                 temperature=call_temperature,
                 max_tokens=call_max_tokens
             )
@@ -285,7 +282,7 @@ def create_model_callable(model_api, model_id: str, provider: str, max_tokens: i
             if isinstance(response, str):
                 return response
             else:
-                raise ValueError(f"Expected string response from {provider}, got {type(response)}")
+                raise ValueError(f"Expected string response from model API, got {type(response)}")
         except Exception as e:
             logger.error(f"Model API call failed: {str(e)}")
             raise
@@ -539,7 +536,7 @@ def normalize_action_parameters_for_construction(
     return params
 
 
-def create_unified_action_guard(model_api, model_id: str, provider: str, 
+def create_unified_action_guard(model_api, model_id: str, 
                                max_tokens: int = 1000, temperature: float = 0.7, 
                                num_reasks: int = 1):
     """
@@ -549,7 +546,6 @@ def create_unified_action_guard(model_api, model_id: str, provider: str,
     Args:
         model_api: Your ModelAPI instance
         model_id: The model ID to use
-        provider: The provider (openrouter)
         max_tokens: Maximum tokens for responses
         temperature: Temperature for generation
         num_reasks: Number of reask attempts
@@ -561,7 +557,6 @@ def create_unified_action_guard(model_api, model_id: str, provider: str,
     model_callable = create_model_callable(
         model_api=model_api,
         model_id=model_id,
-        provider=provider,
         max_tokens=max_tokens,
         temperature=temperature
     )

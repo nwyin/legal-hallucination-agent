@@ -125,11 +125,7 @@ def setup_api_keys():
         else:
             print(f"⚠ {env_var} not found")
 
-def check_required_api_keys(provider: str, agent_config: Dict[str, Any]) -> bool:
-    normalized_provider = (provider or "").lower().strip()
-    if normalized_provider != "openrouter":
-        logger.error("Only OpenRouter is supported. Set agent.model.provider to 'openrouter'.")
-        return False
+def check_required_api_keys(agent_config: Dict[str, Any]) -> bool:
     required = ["OPENROUTER_API_KEY"]
     # Without this key every OPEN_WEB_SEARCH would fail; refuse to run rather than
     # silently benchmark an agent that cannot use one of the paper's eight actions.
@@ -140,15 +136,6 @@ def check_required_api_keys(provider: str, agent_config: Dict[str, Any]) -> bool
         logger.error(f"{key} is required but not found")
         print(f"Please set: export {key}='your_key'")
     return not missing
-
-
-def _enforce_openrouter_provider(cfg: Dict[str, Any], cfg_name: str) -> Dict[str, Any]:
-    provider = (cfg.get("provider") or "openrouter").lower().strip()
-    if provider and provider != "openrouter":
-        logger.warning(
-            f"{cfg_name} provider '{provider}' is ignored. Using 'openrouter' to enforce single-provider setup."
-        )
-    return {**(cfg or {}), "provider": "openrouter"}
 
 
 def resolve_agent_model_config(cfg: DictConfig) -> Dict[str, Any]:
@@ -271,7 +258,6 @@ def create_agent(
         'environment': environment,
         'model_api': model_api,
         'model_id': model_config.get('model_id'),
-        'provider': model_config.get('provider'),
         'max_tokens': max_tokens_default,
         'max_tokens_config': agent_max_tokens_config,
         'temperature': model_config.get('temperature', 0.7),
@@ -282,7 +268,6 @@ def create_agent(
         'courtlistener_opinion_access_enabled': agent_config.get('courtlistener_opinion_access_enabled', False),
         # Optional overrides for belief update calls only
         'belief_update_model_id': model_config.get('belief_update_model_id'),
-        'belief_update_provider': model_config.get('belief_update_provider'),
         'belief_update_temperature': model_config.get('belief_update_temperature'),
     }
     
@@ -820,9 +805,8 @@ def main(cfg: DictConfig):
     model_config = resolve_agent_model_config(cfg)
     eval_settings = OmegaConf.to_container(cfg.get('evaluation', {}), resolve=True)
 
-    model_config = _enforce_openrouter_provider(model_config, "agent.model.provider")
     # Check API key
-    if not check_required_api_keys(model_config.get('provider'), agent_config):
+    if not check_required_api_keys(agent_config):
         return
     output_dir = cfg.get('output_dir', 'outputs')
     metrics_dir = cfg.get('metrics_dir', 'metrics')

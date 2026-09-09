@@ -29,11 +29,9 @@ test_run: false
 agent:
   # Agent model: Used for agent inference (action selection, belief updates, etc.)
   model:
-    provider: "openrouter"  # Provider: openrouter only
     model_id: "openai/gpt-4o"  # OpenRouter model ID
     temperature: 0.8
     max_tokens: 10000
-    max_attempts: 3
     seed: null  # Set to null for randomness
   
   # Max tokens for different agent inference steps

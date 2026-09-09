@@ -4,7 +4,6 @@ version = "0.1.0"
 description = "Benchmark agent for checking citations, quotes, and holdings in legal briefs"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "attrs==25.3.0",
     "backoff==2.2.1",
     "certifi==2025.7.14",
     "guardrails-ai==0.6.6",

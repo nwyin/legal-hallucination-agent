@@ -701,7 +701,6 @@ name = "legal-hallucination-agent"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "attrs" },
     { name = "backoff" },
     { name = "certifi" },
     { name = "guardrails-ai" },
@@ -720,7 +719,6 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "attrs", specifier = "==25.3.0" },
     { name = "backoff", specifier = "==2.2.1" },
     { name = "certifi", specifier = "==2025.7.14" },
     { name = "guardrails-ai", specifier = "==0.6.6" },
