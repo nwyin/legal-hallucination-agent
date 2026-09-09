@@ -66,7 +66,7 @@ uv run --locked python -m benchmark_agent.run \
   --config-name=legal_hallucination_checker_gpt \
   data.dataset_path=data/LePhantomCite-eval.jsonl \
   data.id_field=filename \
-  dataset=legal_phantom_eval \
+  +dataset=legal_phantom_eval \
   environment.max_steps=30
 ```
 

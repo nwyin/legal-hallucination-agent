@@ -457,9 +457,9 @@ def run_episode(
         evaluate_entry,
         compute_metrics,
     )
-    ground_truth_list = environment.key if isinstance(environment.key, list) else []
+    # evaluate_entry accepts both a list of spans and a {span: type} dict.
     gt_found, gt_total, correct_pred, pred_total = evaluate_entry(
-        ground_truth_list, predicted_hallucinations
+        environment.key, predicted_hallucinations
     )
     metrics = compute_metrics(gt_found, gt_total, correct_pred, pred_total)
     precision, recall, f1 = metrics["precision"], metrics["recall"], metrics["f1"]
