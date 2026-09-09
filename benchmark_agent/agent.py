@@ -450,35 +450,23 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
         
         return f"Task Beliefs: {self.task_beliefs}"
     
+    # Markers after which the task beliefs text starts, tried in order:
+    # markdown heading, bold label, plain label with colon.
+    _TASK_BELIEFS_MARKERS = (
+        r"(?:^|\n)#+\s*Task\s*Beliefs[^\n]*\n",              # ### Task Beliefs ...
+        r"(?:^|\n)\s*\*\*\s*Task\s*Beliefs[^\n]*\*\*\s*\n",  # **Task Beliefs:** ...
+        r"Task\s*Beliefs\s*:\s*",                            # Task Beliefs: ...
+    )
+
     def _parse_belief_update(self, text: str) -> None:
         task_section = None
-        
-        # Try markdown headings format: ### Task Beliefs ...
-        try:
-            task_heading = re.search(r"(?:^|\n)#+\s*Task\s*Beliefs[^\n]*\n", text, flags=re.IGNORECASE)
-            if task_heading:
-                task_section = text[task_heading.end():].strip()
-        except Exception:
-            pass
-        
-        # Try markdown bold labels: **Task Beliefs:** ...
-        if task_section is None:
-            try:
-                task_bold = re.search(r"(?:^|\n)\s*\*\*\s*Task\s*Beliefs[^\n]*\*\*\s*\n", text, flags=re.IGNORECASE)
-                if task_bold:
-                    task_section = text[task_bold.end():].strip()
-            except Exception:
-                pass
-        
-        # Try label with colon format: Task Beliefs: ...
-        if task_section is None:
-            try:
-                m = re.search(r"Task\s*Beliefs\s*:\s*([\s\S]*)", text, flags=re.IGNORECASE)
-                if m:
-                    task_section = m.group(1).strip()
-            except Exception:
-                pass
-        
+
+        for marker in self._TASK_BELIEFS_MARKERS:
+            match = re.search(marker, text, flags=re.IGNORECASE)
+            if match:
+                task_section = text[match.end():].strip()
+                break
+
         # Try JSON format: {"task_beliefs": ...}
         if task_section is None:
             try:
@@ -525,8 +513,7 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             self.update_beliefs(observation, self.last_action)
         
         # Check if this is the final step - if so, use prediction prompt to force PROVIDE_FINAL_RESPONSE
-        max_steps = getattr(self.environment, 'max_steps', 10)
-        is_final_step = (self.current_step + 1) >= max_steps
+        is_final_step = (self.current_step + 1) >= self.environment.max_steps
         
         if is_final_step:
             logger.info("Final step reached - using prediction prompt to force PROVIDE_FINAL_RESPONSE")
@@ -583,38 +570,20 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             logger.error("No action selection prompt constructor configured")
             return None
         
-        action_space = self._get_available_action_types()
-        
-        # Get optional search capabilities from environment
-        search_capabilities = ""
-        if hasattr(self.environment, 'get_search_capabilities'):
-            search_capabilities = self.environment.get_search_capabilities()
-        
-        # Get task instance description and response requirements (for PROVIDE_FINAL_RESPONSE format)
-        task_instance_description = ""
-        if hasattr(self.environment, 'get_task_instance_description'):
-            task_instance_description = self.environment.get_task_instance_description()
-        response_requirements = ""
-        if hasattr(self.environment, 'get_response_requirements'):
-            response_requirements = self.environment.get_response_requirements()
-        
-        action_selection_environment_description = self.environment_description
-        if hasattr(self.environment, "get_action_selection_environment_description"):
-            action_selection_environment_description = self.environment.get_action_selection_environment_description()
-
         system_prompt = self.action_selection_prompt_constructor.get_system_prompt(
-            action_space=action_space,
-            environment_description=action_selection_environment_description,
-            search_capabilities=search_capabilities,
+            action_space=self._get_available_action_types(),
+            environment_description=self.environment.get_action_selection_environment_description(),
+            search_capabilities=self.environment.get_search_capabilities(),
         )
-        
+
         user_prompt = self.action_selection_prompt_constructor.get_user_prompt(
             observation=observation,
             history=self.history,
             current_beliefs=f"Task beliefs: {self.task_beliefs}",
-            max_steps=getattr(self.environment, 'max_steps', 10),
-            task_instance_description=task_instance_description,
-            response_requirements=response_requirements,
+            max_steps=self.environment.max_steps,
+            # The environment has no per-instance description; the prompt renders "" as "N/A".
+            task_instance_description="",
+            response_requirements=self.environment.get_response_requirements(),
         )
         
         return [
@@ -715,25 +684,13 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             Tuple of (prediction, confidence) where confidence is 0.0-1.0
         """
         try:
-            # Get environment description
-            env_description = ""
-            if hasattr(self.environment, 'get_environment_description'):
-                env_description = self.environment.get_environment_description()
-            elif hasattr(self.environment, 'get_task_instance_description'):
-                env_description = self.environment.get_task_instance_description()
-            
-            # Get response requirements if available
-            response_requirements = ""
-            if hasattr(self.environment, 'get_response_requirements'):
-                response_requirements = self.environment.get_response_requirements()
-            
-            # Get task instance description if available
+            env_description = self.environment.get_environment_description()
+            response_requirements = self.environment.get_response_requirements()
+            # The environment has no per-instance description; the prompt omits the section for "".
             task_instance_description = ""
-            if hasattr(self.environment, 'get_task_instance_description'):
-                task_instance_description = self.environment.get_task_instance_description()
-            
+
             # Build prediction prompt using the prediction prompt constructor
-            max_steps = getattr(self.environment, 'max_steps', None)
+            max_steps = self.environment.max_steps
             if max_steps == 0:
                 response_requirements = response_requirements.replace(
                     "that you have labeled as hallucinated in your Current Task Beliefs",

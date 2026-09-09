@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
-    from .agent import Agent
+    from .agent import BayesianOptimalExperimentalDesignAgent as Agent
     from .environment import Environment
 
 logger = logging.getLogger(__name__)
@@ -219,18 +219,15 @@ def log_initial_state(agent: "Agent", environment: "Environment", observation, t
     logger.info(f"Initial Observation: {observation.result}")
     logger.info(f"Available Actions: {[a.value for a in agent.action_space]}")
     logger.info(f"Max Steps: {environment.max_steps}")
-    
-    if not hasattr(agent, 'action_selection_prompt_constructor'):
-        return
-        
+
     log_section("AGENT CONFIGURATION")
     logger.info(f"Agent Type: {agent.__class__.__name__}")
     logger.info(f"Model: {agent.model_id}")
     logger.info(f"Temperature: {agent.temperature}")
-    logger.info(f"Max Tokens Config: {getattr(agent, 'max_tokens_config', 'N/A')}")
+    logger.info(f"Max Tokens Config: {agent.max_tokens_config}")
     logger.info(f"Action Space: {[a.value for a in agent.action_space]}")
-    logger.info(f"Thinking Enabled: {getattr(agent, 'thinking_enabled', 'N/A')}")
-    logger.info(f"Open Web Search Enabled: {getattr(agent, 'open_web_search_enabled', 'N/A')}")
+    logger.info(f"Thinking Enabled: {agent.thinking_enabled}")
+    logger.info(f"Open Web Search Enabled: {agent.open_web_search_enabled}")
 
 
 # =============================================================================
@@ -298,9 +295,6 @@ def log_generic_observation(observation):
 
 
 def log_beliefs(agent: "Agent"):
-    if not hasattr(agent, 'get_current_beliefs'):
-        return
-    
     current_beliefs = agent.get_current_beliefs()
     if not current_beliefs:
         return

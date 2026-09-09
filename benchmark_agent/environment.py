@@ -87,6 +87,19 @@ class Observation:
         return f"Observation(result={self.result}, metadata={self.metadata})"
 
 
+def _error_observation(action_type: str, error: str, result: Any, **metadata: Any) -> Observation:
+    """Build the observation returned when an action fails.
+
+    `result` is what the agent reads (an error message string, or a dict in the
+    shape the action's success result would have) and is passed through
+    unchanged. The metadata always carries `action_type` and `error` (`error`
+    may be a short code where the result holds the readable message) plus any
+    extra fields, so `step()` can flag the failure.
+    """
+    logger.error("%s failed: %s", action_type, error)
+    return Observation(result=result, metadata={"action_type": action_type, **metadata, "error": error})
+
+
 class Environment():
     def __init__(self, question: str, key: str, action_space: List[ActionType], max_steps: int = 6):
         self.question = question
@@ -404,18 +417,11 @@ class HallucinationCheckerEnvironment(Environment):
             )
             
         except Exception as e:
-            error_msg = str(e)
-            logger.error(f"Web search failed: {error_msg}")
-            observation = Observation(
-                result=f"Web search failed: {error_msg}",
-                metadata={
-                    "action_type": "OPEN_WEB_SEARCH",
-                    "query": query,
-                    "error": error_msg,
-                    "web_search_results": []
-                }
+            observation = _error_observation(
+                "OPEN_WEB_SEARCH", str(e), f"Web search failed: {e}",
+                query=query, web_search_results=[],
             )
-        
+
         return observation
     
     def _handle_courtlistener_search_action(self, action: Action) -> Observation:
@@ -427,23 +433,25 @@ class HallucinationCheckerEnvironment(Environment):
             or getattr(self, "search_top_k", 10)
         )
 
-        def failed(error_msg: str, **extra_metadata) -> Observation:
-            logger.error(f"CourtListener search failed: {error_msg}")
-            return Observation(
-                result=f"CourtListener search failed: {error_msg}",
-                metadata={"action_type": "OPEN_COURTLISTENER_SEARCH", "query": query, "error": error_msg, **extra_metadata},
-            )
-
         if not query:
-            return failed("missing query")
+            return _error_observation(
+                "OPEN_COURTLISTENER_SEARCH", "missing query",
+                "CourtListener search failed: missing query", query=query,
+            )
         try:
             summary = search_courtlistener(query, search_type=search_type)
         except NonRetryableError as exc:
             # Tell the agent the query itself is the problem so it can rephrase.
-            return failed(f"Search query error: {exc}. Please fix the query and try again.",
-                          search_type=search_type, non_retryable=True)
+            error = f"Search query error: {exc}. Please fix the query and try again."
+            return _error_observation(
+                "OPEN_COURTLISTENER_SEARCH", error, f"CourtListener search failed: {error}",
+                query=query, search_type=search_type, non_retryable=True,
+            )
         except Exception as exc:
-            return failed(str(exc), search_type=search_type)
+            return _error_observation(
+                "OPEN_COURTLISTENER_SEARCH", str(exc), f"CourtListener search failed: {exc}",
+                query=query, search_type=search_type,
+            )
 
         structured_results = []
         for idx, result in enumerate(summary["results"][:k]):
@@ -491,19 +499,20 @@ class HallucinationCheckerEnvironment(Environment):
     def _handle_courtlistener_opinion_action(self, action: Action) -> Observation:
         opinion_id = (getattr(action, "opinion_id", "") or "").strip()
 
-        def failed(error_msg: str) -> Observation:
-            logger.error(f"ACCESS_COURTLISTENER_OPINION failed: {error_msg}")
-            return Observation(
-                result={"error": error_msg, "opinion_id": opinion_id or None, "opinion": None},
-                metadata={"action_type": "ACCESS_COURTLISTENER_OPINION", "opinion_id": opinion_id or None, "error": error_msg},
-            )
-
         if not opinion_id:
-            return failed("missing opinion_id")
+            return _error_observation(
+                "ACCESS_COURTLISTENER_OPINION", "missing opinion_id",
+                {"error": "missing opinion_id", "opinion_id": None, "opinion": None},
+                opinion_id=None,
+            )
         try:
             opinion = fetch_opinion(opinion_id)
         except Exception as exc:
-            return failed(str(exc))
+            return _error_observation(
+                "ACCESS_COURTLISTENER_OPINION", str(exc),
+                {"error": str(exc), "opinion_id": opinion_id, "opinion": None},
+                opinion_id=opinion_id,
+            )
 
         # Store full opinion to disk (filename = opinion_id)
         safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(opinion_id))
@@ -546,20 +555,21 @@ class HallucinationCheckerEnvironment(Environment):
     def _handle_courtlistener_citation_lookup_action(self, action: Action) -> Observation:
         cite = (getattr(action, "cite", "") or "").strip()
         result = {"action_type": "COURTLISTENER_CITATION_LOOKUP", "cite": cite, "citations": [], "results": []}
-        metadata = {"action_type": "COURTLISTENER_CITATION_LOOKUP", "cite": cite}
         if not cite:
-            result["error"] = metadata["error"] = "cite is required"
-            return Observation(result=result, metadata=metadata)
+            return _error_observation(
+                "COURTLISTENER_CITATION_LOOKUP", "cite is required",
+                {**result, "error": "cite is required"}, cite=cite,
+            )
         try:
             hits = lookup_citation(cite)
         except Exception as exc:
-            logger.error(f"COURTLISTENER_CITATION_LOOKUP failed: {exc}")
-            result["results"] = None
-            result["error"] = metadata["error"] = str(exc)
-            return Observation(result=result, metadata=metadata)
+            return _error_observation(
+                "COURTLISTENER_CITATION_LOOKUP", str(exc),
+                {**result, "results": None, "error": str(exc)}, cite=cite,
+            )
         result["results"] = hits
         result["citations"] = [item.get("citation") for item in hits if isinstance(item, dict) and item.get("citation")]
-        return Observation(result=result, metadata=metadata)
+        return Observation(result=result, metadata={"action_type": "COURTLISTENER_CITATION_LOOKUP", "cite": cite})
 
     def _get_searchable_opinion_text(self, opinion: Any) -> str:
         if not isinstance(opinion, dict):
@@ -587,31 +597,33 @@ class HallucinationCheckerEnvironment(Environment):
     def _handle_search_local_opinion_action(self, action: Action) -> Observation:
         opinion_id = (getattr(action, "opinion_id", "") or "").strip()
         search_string = (getattr(action, "search_string", "") or "").strip()
+        # The metadata error is a short code; the result carries the readable message.
         if not opinion_id:
-            return Observation(
-                result={"action_type": "SEARCH_LOCAL_OPINION", "opinion_id": None, "snippet": None, "error": "missing opinion_id"},
-                metadata={"action_type": "SEARCH_LOCAL_OPINION", "error": "missing_opinion_id"},
+            return _error_observation(
+                "SEARCH_LOCAL_OPINION", "missing_opinion_id",
+                {"action_type": "SEARCH_LOCAL_OPINION", "opinion_id": None, "snippet": None, "error": "missing opinion_id"},
             )
         if not search_string:
-            return Observation(
-                result={"action_type": "SEARCH_LOCAL_OPINION", "opinion_id": opinion_id, "snippet": None, "error": "missing search_string"},
-                metadata={"action_type": "SEARCH_LOCAL_OPINION", "error": "missing_search_string"},
+            return _error_observation(
+                "SEARCH_LOCAL_OPINION", "missing_search_string",
+                {"action_type": "SEARCH_LOCAL_OPINION", "opinion_id": opinion_id, "snippet": None, "error": "missing search_string"},
             )
         safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(opinion_id))
         cache_path = os.path.join(self.opinion_cache_dir, f"{safe_id}.json")
         if not os.path.isfile(cache_path):
-            return Observation(
-                result={"action_type": "SEARCH_LOCAL_OPINION", "opinion_id": opinion_id, "snippet": None, "error": "opinion not in cache (fetch with ACCESS_COURTLISTENER_OPINION first)"},
-                metadata={"action_type": "SEARCH_LOCAL_OPINION", "error": "not_cached"},
+            return _error_observation(
+                "SEARCH_LOCAL_OPINION", "not_cached",
+                {"action_type": "SEARCH_LOCAL_OPINION", "opinion_id": opinion_id, "snippet": None,
+                 "error": "opinion not in cache (fetch with ACCESS_COURTLISTENER_OPINION first)"},
             )
         try:
             with open(cache_path) as f:
                 opinion = json.load(f)
         except Exception as e:
             logger.warning(f"Failed to read opinion cache {cache_path}: {e}")
-            return Observation(
-                result={"action_type": "SEARCH_LOCAL_OPINION", "opinion_id": opinion_id, "snippet": None, "error": str(e)},
-                metadata={"action_type": "SEARCH_LOCAL_OPINION", "error": "read_error"},
+            return _error_observation(
+                "SEARCH_LOCAL_OPINION", "read_error",
+                {"action_type": "SEARCH_LOCAL_OPINION", "opinion_id": opinion_id, "snippet": None, "error": str(e)},
             )
         plain = self._get_searchable_opinion_text(opinion)
         # Normalize curly quotes/apostrophes to straight so brief and opinion match (U+2019 vs U+0027, etc.)
@@ -699,27 +711,21 @@ class HallucinationCheckerEnvironment(Environment):
         start_line = getattr(action, "start_line", 0)
         num_lines = getattr(action, "num_lines", 50)
         if not opinion_id:
-            logger.info("READ_DOCUMENT result: error=missing opinion_id, content=None")
-            return Observation(
-                result={"action_type": "READ_DOCUMENT", "error": "missing opinion_id", "content": None},
-                metadata={"action_type": "READ_DOCUMENT", "error": "missing_opinion_id"},
+            return _error_observation(
+                "READ_DOCUMENT", "missing_opinion_id",
+                {"action_type": "READ_DOCUMENT", "error": "missing opinion_id", "content": None},
             )
         key = self.document_manager.resolve_document_id(opinion_id)
         if key is None:
             available = list(self.document_manager.documents)
-            logger.info(
-                "READ_DOCUMENT result: opinion_id=%s error=document not found, available=%s, content=None",
-                opinion_id,
-                available,
-            )
-            return Observation(
-                result={
+            return _error_observation(
+                "READ_DOCUMENT", "not_found",
+                {
                     "action_type": "READ_DOCUMENT",
                     "opinion_id": opinion_id,
                     "error": f"document not found (available: {available})",
                     "content": None,
                 },
-                metadata={"action_type": "READ_DOCUMENT", "error": "not_found"},
             )
         content = self.document_manager.documents[key]
         try:
@@ -757,13 +763,16 @@ class HallucinationCheckerEnvironment(Environment):
         content = getattr(action, "content", "") or ""
         position = getattr(action, "position", None)
         if not operation:
-            return Observation(
-                result={"action_type": "EDIT_SCRATCHPAD", "error": "missing operation", "scratchpad": self.document_manager.get_scratchpad_content()},
-                metadata={"action_type": "EDIT_SCRATCHPAD", "error": "missing_operation"},
+            return _error_observation(
+                "EDIT_SCRATCHPAD", "missing_operation",
+                {"action_type": "EDIT_SCRATCHPAD", "error": "missing operation",
+                 "scratchpad": self.document_manager.get_scratchpad_content()},
             )
         ok = self.document_manager.edit_scratchpad(operation, content, position)
         scratchpad_now = self.document_manager.get_scratchpad_content()
         if not ok:
+            # Not routed through _error_observation: this metadata reports
+            # success=False and has never carried an "error" key.
             return Observation(
                 result={"action_type": "EDIT_SCRATCHPAD", "error": "edit failed", "scratchpad": scratchpad_now},
                 metadata={"action_type": "EDIT_SCRATCHPAD", "success": False},
