@@ -7,3 +7,6 @@ __pycache__/
 
 # Local API credentials
 .env
+
+# Synthetic live smoke artifacts
+outputs/smoke/

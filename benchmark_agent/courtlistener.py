@@ -19,6 +19,7 @@ import requests_cache
 from dateutil import parser as date_parser
 
 from .actions import SEARCH_TYPES
+from .tracing import capture_http
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +65,9 @@ def make_courtlistener_request(endpoint: str, params: Dict[str, Any]) -> Dict[st
     )
     logger.debug(f"Making request to {url} with params: {params}")
     time.sleep(RATE_LIMIT_DELAY)
-    response = requests.get(url, params=params, headers=headers, verify=certifi.where())
+    with capture_http("request-courtlistener", "GET", url, params=params) as capture:
+        response = requests.get(url, params=params, headers=headers, verify=certifi.where())
+        capture(response)
     if not response.ok:
         logger.error(f"CourtListener V4 API request failed: {response.status_code} - {response.text}")
         if response.status_code in NON_RETRYABLE_STATUSES:
@@ -142,8 +145,10 @@ def lookup_citation(cite: str, max_attempts: int = 3) -> List[Dict[str, Any]]:
     for attempt in range(max_attempts):
         try:
             time.sleep(RATE_LIMIT_DELAY)
-            resp = requests.post(CITATION_LOOKUP_URL, headers=headers, json={"text": cite},
-                                 timeout=30, verify=certifi.where())
+            with capture_http("lookup-citation", "POST", CITATION_LOOKUP_URL, json={"text": cite}) as capture:
+                resp = requests.post(CITATION_LOOKUP_URL, headers=headers, json={"text": cite},
+                                     timeout=30, verify=certifi.where())
+                capture(resp)
             if resp.status_code == 429:
                 wait_until = (resp.json() if resp.text else {}).get("wait_until")
                 if wait_until:

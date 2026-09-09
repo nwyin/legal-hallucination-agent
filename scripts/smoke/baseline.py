@@ -9,10 +9,12 @@ import socket
 import subprocess
 import sys
 from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-os.environ["OTEL_SDK_DISABLED"] = "true"
+if "replay" in sys.argv:
+    os.environ["OTEL_SDK_DISABLED"] = "true"
 from dotenv import load_dotenv
 load_dotenv(ROOT / ".env")
 from benchmark_agent import run as runner
@@ -45,6 +47,9 @@ def main():
     args = parser.parse_args()
     base = args.directory.resolve()
     recording = args.mode == "record"
+    if not recording:
+        patch("benchmark_agent.tracing.require_capture").start()
+        patch("benchmark_agent.tracing.publish_aggregate").start()
     if recording and (base / "manifest.json").exists():
         raise SystemExit("Baseline already exists; choose a new --directory to avoid overwriting it.")
     if recording and not os.getenv("OPENROUTER_API_KEY"):

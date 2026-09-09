@@ -116,47 +116,82 @@ Set the required key(s) as environment variables:
 
 ## Langfuse tracing
 
-Langfuse tracing is enabled when `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY`
-are configured. Add these to `.env` or export them before starting the runner:
+Every experiment requires Langfuse credentials and complete capture. Configure `.env`
+or export these variables before running:
 
 ```dotenv
 LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...
-LANGFUSE_BASE_URL=https://cloud.langfuse.com
+LANGFUSE_BASE_URL=https://us.cloud.langfuse.com
 LANGFUSE_TRACING_ENVIRONMENT=development
 ```
 
-Use your project's region or self-hosted URL for `LANGFUSE_BASE_URL` (for example,
-`https://us.cloud.langfuse.com` for US Cloud). The normal experiment commands
-produce one `verify-legal-brief` agent trace per example, containing action
-selection, belief updates, predictions, retrieval/tool results, and individual
-OpenAI SDK generations with model, token usage, latency, and provider errors.
-Dataset, example, method, and final precision/recall/F1 appear as metadata.
-Results include `langfuse_trace_id` for correlation. The CLI flushes pending
-observations in `finally`; callers embedding `run_single_example` should call
-`benchmark_agent.tracing.flush_traces()` before exiting.
+Create a project API key pair in Langfuse's **Settings → API Keys**. Use your
+project's regional or self-hosted URL; `LANGFUSE_HOST` is also accepted.
+The runner checks authentication before making model calls. Missing credentials,
+disabled tracing (`OTEL_SDK_DISABLED` / `LANGFUSE_TRACING_ENABLED`), content redaction
+(`LANGFUSE_CAPTURE_CONTENT=false`), and sampling below 1 are rejected.
 
-Brief text, model prompts/responses, and tool content are captured by default.
-Configured environment credentials are masked in exported span attributes;
-this does **not** anonymize legal text or detect arbitrary PII. Set
-`LANGFUSE_CAPTURE_CONTENT=false` to redact inputs, outputs, metadata, and error
-messages while retaining model usage and timing. Set `LANGFUSE_TRACING_ENABLED=false`
-to disable tracing altogether. An explicit `OTEL_SDK_DISABLED=true` also disables
-tracing and must be removed to see traces.
+Each run has a UUID printed as `Langfuse run/session`. Find it in Langfuse Sessions
+or filter observations by session ID. Each example produces a `verify-legal-brief`
+trace; an `experiment-summary` trace in the same session lists example IDs and episode
+trace IDs. Local metrics include `langfuse_trace_id` and `langfuse_run_id`.
+Precision, recall, F1, and step count are numeric **scores** on episode traces;
+aggregate matching counts, precision/recall/F1, example count, and error count are
+scores on the summary trace (including single-example runs).
 
-Optional SDK settings include `LANGFUSE_SAMPLE_RATE` (0–1) and `LANGFUSE_RELEASE`.
-See Langfuse's [tracing best practices](https://langfuse.com/docs/observability/best-practices).
+Capture includes exact model requests and full responses (including provider fields),
+SDK generations with tokens and latency, selected actions, validation failures and
+re-asks, beliefs, predictions, and errors. Retrieval child spans retain raw HTTP
+response bodies before filtering, including full opinions and external search
+results. Tool spans separately record structured results and `agent_observation`,
+the exact rendered observation. Full opinions remain out of the model-facing snippet
+observation. Deleting the runtime opinion cache does not delete telemetry.
 
-Verify the real SDK integration using recorded synthetic model responses:
+Run metadata contains the resolved configuration, OpenRouter/model identifiers,
+dataset file SHA-256 (the revision of the actual input bytes), per-example SHA-256
+and ID, Git revision/dirty state, source hashes, Python, and installed dependency
+versions. For embedded calls without a dataset file, the example hash identifies
+input content. Credential fields and configured environment secret values are
+redacted; this does not anonymize legal text. Only send benchmark inputs you intend
+to store in the configured Langfuse project.
+
+Both the CLI and embedded `run_single_example` calls flush after ended observations,
+on success and failure. Capture/export failures raise an error; simultaneous execution
+and export failures retain both exceptions. SDK background score/media failures and
+OTLP export rejection also fail the run. Only episodes with a successful export
+receive the local `langfuse_exported` marker used by `skip_completed`; older metrics
+without that marker will be rerun. Server-side indexing can lag a successful
+flush by minutes; remote readback is separate from the fast smoke command. See [Langfuse tracing best practices](https://langfuse.com/docs/observability/best-practices).
 
 ```bash
-# Offline: blocks network and checks exported span structure and token capture
+# Offline SDK integration: raw retrieval, request parity, scores, masking, lifecycle
 uv run --locked python scripts/smoke/tracing.py
 
-# Sends only synthetic test traces to the configured Langfuse project;
-# model responses are replayed, with no model API calls or charges
+# Same synthetic checks, with real Langfuse export and no model charges
 uv run --locked python scripts/smoke/tracing.py --export
+
+# Fast live OpenRouter + Langfuse smoke; writes a report and trace link
+uv run --locked python scripts/smoke/live.py
+
+# Direct-prediction path, or choose a different model
+uv run --locked python scripts/smoke/live.py --steps 0
+uv run --locked python scripts/smoke/live.py --model google/gemini-2.5-flash-lite
 ```
+
+The live smoke uses one invented example, a two-step budget, 1,024 output tokens
+per call, a maximum of eight model calls, 20-second request timeouts, and no SDK
+retries. It explicitly limits actions to THINK, EDIT_SCRATCHPAD, and
+PROVIDE_FINAL_RESPONSE; retrieval coverage comes from the synthetic integration
+check. Its configuration records these restrictions. This is a connectivity and
+trajectory smoke test, not a paper-accuracy benchmark. Strict baseline replay checks
+that tracing does not alter prompts, observations, predictions, or action behavior.
+Offline replay explicitly mocks the required telemetry boundary; production runs
+have no offline tracing bypass.
+
+For an unexplained, dramatic paper-result divergence, use the stored requests,
+retrieval evidence, observations, and scores to investigate fidelity. Exhaustive
+paper reproduction is not required to validate telemetry or the fast smoke test.
 
 ## Running Experiments
 

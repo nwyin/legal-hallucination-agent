@@ -226,7 +226,7 @@ def search_client_makes_http_requests():
     """Exercise the real SerpAPI request method with only HTTP mocked."""
     client = web_search.SerpApiClient(api_key="offline-placeholder", max_retries=0)
     payload = {"results": [{"title": "offline result"}]}
-    response = SimpleNamespace(raise_for_status=lambda: None, json=lambda: payload)
+    response = SimpleNamespace(status_code=200, text=json.dumps(payload), raise_for_status=lambda: None, json=lambda: payload)
     with patch("requests.get", return_value=response) as get:
         result = client._make_request_with_retry("https://example.invalid/search", {"q": "test query"})
     get.assert_called_once_with("https://example.invalid/search", params={"q": "test query"})

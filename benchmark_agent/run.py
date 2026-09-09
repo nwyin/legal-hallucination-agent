@@ -6,6 +6,7 @@ Loads examples from a JSONL dataset, runs a citation-focused agent, and writes
 episode metrics.
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -20,7 +21,8 @@ from dotenv import load_dotenv
 from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
-from .tracing import langfuse, observe, propagate_attributes, flush_traces
+from .tracing import (langfuse, observe, propagate_attributes, episode_capture, experiment_run,
+                      run_context, episode_trace, score_metrics, publish_aggregate, TelemetryError, check_capture)
 from .agent import Agent, BayesianOptimalExperimentalDesignAgent, BOEDCitationTrackerAgent
 from .environment import Environment, HallucinationCheckerEnvironment, Observation
 from .llm import ModelAPI
@@ -32,7 +34,7 @@ from .prompts import (
     BOEDCitationTrackerBeliefUpdatePromptConstructor,
     BOEDCitationTrackerPredictionPromptConstructor,
 )
-from .evaluation import aggregate_metrics, compute_metrics, evaluate_entry, evaluate_hallucination_entry, extract_ground_truth
+from .evaluation import compute_metrics, evaluate_entry, extract_ground_truth
 from .recording import (
     MetricsCollector,
     log_initial_state,
@@ -128,7 +130,14 @@ def get_example_by_id(examples: List[Dict[str, Any]], example_id: str, id_field:
 
 def get_completed_examples(metrics_dir: str) -> set:
     """Example IDs with a metrics file in metrics_dir (file stem = example id)."""
-    return {p.stem for p in Path(metrics_dir).glob("*.json")} if os.path.isdir(metrics_dir) else set()
+    completed = set()
+    for path in Path(metrics_dir).glob("*.json"):
+        try:
+            if json.loads(path.read_text()).get("langfuse_exported") is True:
+                completed.add(path.stem)
+        except (OSError, ValueError):
+            continue
+    return completed
 
 
 def method_key(method: str, max_steps: int) -> str:
@@ -343,6 +352,7 @@ def log_results(summary: Dict[str, Any], method: str, example_id: str):
     logger.info("=" * 60)
 
 
+@episode_capture
 @observe(name="verify-legal-brief", as_type="agent", capture_input=False, capture_output=False)
 def run_single_example(
     method: str,
@@ -362,9 +372,12 @@ def run_single_example(
     """Run a single example and return results."""
     model_id = model_config.get('model_id', 'unknown')
     max_steps = env_settings.get('max_steps', 30)
+    episode_trace.set(langfuse.get_current_trace_id())
     langfuse.update_current_span(
         input=example.get("text", ""),
-        metadata={"example_id": example_id, "dataset": dataset, "method": method,
+        metadata={**(run_context.get() or {}), "example_id": example_id, "dataset": dataset, "method": method,
+                  "example_sha256": hashlib.sha256(json.dumps(example, sort_keys=True).encode()).hexdigest(),
+                  "ground_truth": extract_ground_truth(example),
                   "model": model_id, "max_steps": max_steps},
     )
     if experiment_logs:
@@ -398,6 +411,8 @@ def run_single_example(
     trace_id = langfuse.get_current_trace_id()
     if trace_id:
         summary["langfuse_trace_id"] = trace_id
+        summary["langfuse_run_id"] = run_context.get()["run_id"]
+        score_metrics({k: summary[k] for k in ("precision", "recall", "f1", "accuracy", "total_steps")}, trace_id, example_id)
 
     # Save ground truth, prediction, raw response, scores, and trace id alongside the trajectory.
     predicted = summary.get("predicted_hallucinations")
@@ -406,6 +421,7 @@ def run_single_example(
         "predicted_hallucinations": predicted,
         "final_response_raw": summary.get("final_response"),  # agent response string before parsing
         "langfuse_trace_id": trace_id,
+        "langfuse_run_id": (run_context.get() or {}).get("run_id"),
         **compute_metrics(*evaluate_entry(ground_truth, predicted)),
     }
     no_response = summary.get("final_response") is None
@@ -427,10 +443,12 @@ def run_single_example(
 
 
 @hydra.main(version_base=None, config_path="../configs", config_name="legal_hallucination_checker_gpt")
+@experiment_run
 def main(cfg: DictConfig):
     """Run every selected example from the dataset and write per-episode metrics plus a batch summary."""
     log_config = OmegaConf.to_container(cfg.get('logging', {}), resolve=True)
     setup_logging(log_config)
+    logger.info("Langfuse run/session: %s", run_context.get()["run_id"])
 
     method = cfg.get('method', 'boed_citation_tracker')
     requested_task = cfg.get('task')
@@ -453,7 +471,7 @@ def main(cfg: DictConfig):
     max_steps = env_settings.get('max_steps', 30)
 
     if not check_required_api_keys(agent_config):
-        return
+        raise ValueError("Required model/search credentials missing")
     output_dir = cfg.get('output_dir', 'outputs')
     metrics_dir = cfg.get('metrics_dir', 'metrics')
     if cfg.get('test_run', False):
@@ -515,19 +533,20 @@ def main(cfg: DictConfig):
                 output_dir=output_dir, metrics_dir=metrics_dir, example_id=ex_id, dataset=dataset,
                 experiment_logs=log_config.get('experiment_logs', False), model_api=model_api,
             ))
+        except TelemetryError:
+            raise
         except Exception as e:
+            check_capture()
             logger.exception(f"Failed on example {ex_id}: {e}")
-            results.append({'example_id': ex_id, 'error': str(e), 'is_correct': None})
+            results.append({'example_id': ex_id, 'error': str(e), 'is_correct': None,
+                            'true_answer': extract_ground_truth(example),
+                            'langfuse_trace_id': getattr(e, "langfuse_trace_id", None)})
         finally:
             # Each episode has its own cache subdirectory; clear it so disk use does not accumulate.
             clear_opinion_cache(episode_opinion_cache_dir(paths_config, output_dir, model_id, method, max_steps, ex_id))
 
-    if len(results) > 1:
-        agg = aggregate_metrics([
-            evaluate_hallucination_entry({"list_hallucinations": r.get("true_answer") or [],
-                                          "predicted_hallucinations": r.get("predicted_hallucinations")})
-            for r in results
-        ])
+    agg = publish_aggregate(results)
+    if results:
         logger.info(f"\n{'='*60}")
         logger.info(f"BATCH COMPLETE ({TASK_NAME}): P={agg['precision']:.4f} R={agg['recall']:.4f} F1={agg['f1']:.4f}")
         logger.info(
@@ -548,7 +567,4 @@ def main(cfg: DictConfig):
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    finally:
-        flush_traces()
+    main()

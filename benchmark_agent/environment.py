@@ -261,7 +261,8 @@ class HallucinationCheckerEnvironment(Environment):
             metadata={"step": self.current_step + 1},
         ) as span:
             observation = self._execute_action(action)
-            span.update(output={"result": observation.result, "metadata": observation.metadata})
+            span.update(output={"result": observation.result, "metadata": observation.metadata,
+                                "agent_observation": str(observation)})
             if observation.metadata and (observation.metadata.get("error") or observation.metadata.get("skipped")):
                 span.update(level="ERROR", status_message="Action failed or was skipped")
             return observation

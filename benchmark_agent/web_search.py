@@ -24,6 +24,7 @@ import requests
 from dateutil import parser as dateutil_parser
 from dateutil.tz import tzutc
 from dotenv import load_dotenv
+from .tracing import capture_http
 
 load_dotenv()
 
@@ -113,7 +114,9 @@ class SerpApiClient:
         """GET with retries on 429 and connection errors; other HTTP errors raise immediately."""
         for attempt in range(self.max_retries + 1):
             try:
-                response = requests.get(url, params=params)
+                with capture_http("request-serpapi", "GET", url, params=params) as capture:
+                    response = requests.get(url, params=params)
+                    capture(response)
                 response.raise_for_status()
                 return response.json()
             except requests.HTTPError as e:

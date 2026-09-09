@@ -363,6 +363,12 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             try:
                 return parse(response)
             except REASK_ERRORS as e:
+                with langfuse.start_as_current_observation(
+                    name="validate-model-response", input=response,
+                    output={"error": str(e), "attempt": attempt + 1, "exhausted": attempt + 1 == attempts},
+                    level="WARNING",
+                ):
+                    pass
                 logger.warning(
                     "Model response could not be used (attempt %s/%s): %s. Response: %r",
                     attempt + 1, attempts, e, response,
