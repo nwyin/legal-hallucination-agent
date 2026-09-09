@@ -27,9 +27,13 @@ def main():
 
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
-    example = json.loads(
-        (ROOT / "reference_data/openrouter_baseline/input.json").read_text()
-    )
+    example = {
+        "filename": "synthetic_smoke",
+        "text": "Synthetic software test, not a real brief. The following citation is explicitly invented: Imaginary Plaintiff v. Fictional Defendant, 999999 U.S. 999999 (2099). It supposedly holds that all contracts must be written on the moon. When using actions, first THINK about the invented citation before submitting the final response.",
+        "list_hallucinations": [
+            "Imaginary Plaintiff v. Fictional Defendant, 999999 U.S. 999999 (2099)"
+        ],
+    }
     data = output / "synthetic.jsonl"
     data.write_text(json.dumps(example) + "\n")
     cfg = OmegaConf.load(ROOT / "configs/legal_hallucination_checker_gpt.yaml")

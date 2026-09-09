@@ -155,7 +155,7 @@ langfuse = Langfuse(
 
 
 def require_capture():
-    """Fail before model spending; offline checks mock this boundary explicitly."""
+    """Require working telemetry before model spending."""
     missing = [
         k for k in ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY") if not os.getenv(k)
     ]

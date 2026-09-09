@@ -36,7 +36,5 @@ ignore = ["E501"]
 allowed-confusables = ["–"]
 
 [tool.ruff.lint.per-file-ignores]
-# Credentials and offline guards must be set before instrumented imports.
+# Credentials must be set before instrumented imports.
 "benchmark_agent/tracing.py" = ["E402"]
-"scripts/smoke/baseline.py" = ["E402"]
-"scripts/smoke/offline_checks.py" = ["E402"]

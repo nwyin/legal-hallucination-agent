@@ -165,12 +165,6 @@ without that marker will be rerun. Server-side indexing can lag a successful
 flush by minutes; remote readback is separate from the fast smoke command. See [Langfuse tracing best practices](https://langfuse.com/docs/observability/best-practices).
 
 ```bash
-# Offline SDK integration: raw retrieval, request parity, scores, masking, lifecycle
-uv run --locked python scripts/smoke/tracing.py
-
-# Same synthetic checks, with real Langfuse export and no model charges
-uv run --locked python scripts/smoke/tracing.py --export
-
 # Fast live OpenRouter + Langfuse smoke; writes a report and trace link
 uv run --locked python scripts/smoke/live.py
 
@@ -182,12 +176,9 @@ uv run --locked python scripts/smoke/live.py --model google/gemini-2.5-flash-lit
 The live smoke uses one invented example, a two-step budget, 1,024 output tokens
 per call, a maximum of eight model calls, 20-second request timeouts, and no SDK
 retries. It explicitly limits actions to THINK, EDIT_SCRATCHPAD, and
-PROVIDE_FINAL_RESPONSE; retrieval coverage comes from the synthetic integration
-check. Its configuration records these restrictions. This is a connectivity and
-trajectory smoke test, not a paper-accuracy benchmark. Strict baseline replay checks
-that tracing does not alter prompts, observations, predictions, or action behavior.
-Offline replay explicitly mocks the required telemetry boundary; production runs
-have no offline tracing bypass.
+PROVIDE_FINAL_RESPONSE. Its configuration records these restrictions. This is a
+connectivity and trajectory smoke test, not a paper-accuracy benchmark; it does
+not exercise retrieval tools.
 
 For an unexplained, dramatic paper-result divergence, use the stored requests,
 retrieval evidence, observations, and scores to investigate fidelity. Exhaustive
@@ -233,21 +224,6 @@ uv run --locked ruff format .
 The configuration targets Python 3.12. Long prompt strings, intentional en dashes,
 and imports that must follow environment setup have documented exceptions in
 `pyproject.toml`.
-
-## Regression Checks
-
-Both checks are offline: they make no API calls and block network access.
-
-```bash
-# Replay the recorded OpenRouter baseline end to end
-uv run --locked python scripts/smoke/baseline.py replay --directory reference_data/openrouter_baseline
-
-# Check the retrieval paths the replay does not cover (imports, action dispatch)
-uv run --locked python scripts/smoke/offline_checks.py
-```
-
-Replay rewrites timestamped artifacts under `reference_data/`; discard those
-changes rather than committing them over the reference data.
 
 ## Configuration
 
