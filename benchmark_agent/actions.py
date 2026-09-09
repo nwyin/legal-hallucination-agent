@@ -35,7 +35,8 @@ class Action:
       will return. For instance 'This is a action that downloads a file from a `url`. It takes the `url` as input, and
       returns the text contained in the file'.
     - **inputs** (`Dict[str, Dict[str, Union[str, type, bool]]]`) -- The dict of modalities expected for the inputs.
-      It has a `type` key, `description` key, and `required` key.
+      It has a `type` key, `description` key, `required` key, and an optional `default` key
+      applied when an optional input is omitted.
       This can be used in the generated description for your action.
 
     Inspired by the `Tool` class from the  `smol-agents` library: https://github.com/huggingface/smolagents/blob/main/src/smolagents/tools.py#L106
@@ -97,9 +98,9 @@ class Action:
                 if param_value is not None and expected_type is not None:
                     self._validate_parameter_type(param_value, expected_type, input_name)
 
-        # Store the validated parameters as instance attributes
-        for key, value in kwargs.items():
-            setattr(self, key, value)
+        # Store every input as an attribute; omitted optional inputs take the spec default.
+        for input_name, input_spec in inputs_spec.items():
+            setattr(self, input_name, kwargs.get(input_name, input_spec.get('default')))
     
     def _validate_parameter_type(self, value: Any, expected_type: str, param_name: str) -> None:
         """
@@ -149,15 +150,6 @@ class Action:
         return parameters
 
 
-    def print_input_parameters(self):
-        print(f"\n=== {self.__class__.__name__} Attributes ===")
-        
-        # Get all action input parameters
-        for input_name in self.inputs.keys():
-            value = getattr(self, input_name)
-            print(f"{input_name}: {value}")
-
-
     def __repr__(self):
         """
         Return a string representation of the Action instance.
@@ -167,23 +159,6 @@ class Action:
 
 # Registry for Action subclasses
 _action_registry: Dict[ActionType, Type['Action']] = {}
-
-
-def register_action_class(action_class: Type['Action']) -> None:
-    """
-    Manually register an Action class in the registry.
-    Useful for registering classes that might not be imported at module load time.
-    
-    Args:
-        action_class: The Action class to register
-    """
-    if not issubclass(action_class, Action):
-        raise TypeError(f"Can only register Action subclasses, got {type(action_class).__name__}")
-    
-    if not hasattr(action_class, 'action_type') or not action_class.action_type:
-        raise ValueError(f"Action class {action_class.__name__} must have an action_type attribute")
-    
-    _action_registry[action_class.action_type] = action_class
 
 
 def get_action_class(action_type: ActionType) -> type[Action]:
@@ -241,9 +216,6 @@ class ProvideFinalResponse(Action):
     }
 
 
-    def __init__(self, response: str):
-        super().__init__(response=response)
-        self.response = response
 
 
 class Think(Action):
@@ -264,9 +236,6 @@ class Think(Action):
         }
     }
 
-    def __init__(self, thought: str):
-        super().__init__(thought=thought)
-        self.thought = thought
 
 
 # --- CourtListener search actions ---
@@ -292,9 +261,6 @@ class AccessCourtListenerOpinion(Action):
         }
     }
 
-    def __init__(self, opinion_id: str):
-        super().__init__(opinion_id=opinion_id)
-        self.opinion_id = opinion_id
 
 
 class SearchLocalOpinion(Action):
@@ -320,10 +286,6 @@ class SearchLocalOpinion(Action):
         }
     }
 
-    def __init__(self, opinion_id: str, search_string: str):
-        super().__init__(opinion_id=opinion_id, search_string=search_string)
-        self.opinion_id = opinion_id
-        self.search_string = search_string
 
 
 class CourtListenerCitationLookup(Action):
@@ -341,9 +303,6 @@ class CourtListenerCitationLookup(Action):
         }
     }
 
-    def __init__(self, cite: str):
-        super().__init__(cite=cite)
-        self.cite = cite
 
 
 class OpenCourtListenerSearch(Action):
@@ -365,12 +324,14 @@ class OpenCourtListenerSearch(Action):
         "search_type": {
             "type": "string",
             "description": "The type of search to perform. Options: " + ", ".join([f"'{k}'" for k in SEARCH_TYPES.keys()]) + " (default: 'opinions')",
-            "required": False
+            "required": False,
+            "default": "opinions"
         },
         "court": {
             "type": "string",
             "description": "The court to search (e.g., 'scotus', 'ca1', 'ca2') (default: 'scotus')",
-            "required": False
+            "required": False,
+            "default": "scotus"
         },
         "date_filter": {
             "type": "object",
@@ -379,13 +340,6 @@ class OpenCourtListenerSearch(Action):
         }
     }
 
-    def __init__(self, query: str, search_type: str="opinions", court: str="scotus", 
-                 date_filter: dict=None):
-        super().__init__(query=query, search_type=search_type)
-        self.query = query
-        self.search_type = search_type
-        self.court = court
-        self.date_filter = date_filter
 
 
 # --- Open web search actions ---
@@ -410,17 +364,20 @@ class OpenWebSearch(Action):
         "search_type": {
             "type": "string",
             "description": "The type of search to perform. Options: 'web', 'news', 'google_scholar' (default: 'web')",
-            "required": False
+            "required": False,
+            "default": "web"
         },
         "num_results": {
             "type": "integer",
             "description": "Number of results to return (default: 10)",
-            "required": False
+            "required": False,
+            "default": 10
         },
         "news_source": {
             "type": "string",
             "description": "News source to use for news searches. Options: 'serpapi', 'mediastack' (default: 'serpapi')",
-            "required": False
+            "required": False,
+            "default": "serpapi"
         },
         "cutoff_date": {
             "type": "string",
@@ -430,20 +387,10 @@ class OpenWebSearch(Action):
         "exclude_undated": {
             "type": "boolean",
             "description": "If true, exclude results without publication dates (default: true)",
-            "required": False
+            "required": False,
+            "default": True
         }
     }
-
-    def __init__(self, query: str, search_type: str = "web", num_results: int = 10, 
-                 news_source: str = "serpapi", cutoff_date: str = None, exclude_undated: bool = True, **kwargs):
-        super().__init__(query=query, search_type=search_type, num_results=num_results, 
-                        news_source=news_source, cutoff_date=cutoff_date, exclude_undated=exclude_undated, **kwargs)
-        self.query = query
-        self.search_type = search_type
-        self.num_results = num_results
-        self.news_source = news_source
-        self.cutoff_date = cutoff_date
-        self.exclude_undated = exclude_undated
 
     def __repr__(self):
         return f"<OpenWebSearch query='{self.query}' search_type='{self.search_type}' num_results={self.num_results}>"
@@ -480,11 +427,6 @@ class ReadDocument(Action):
         }
     }
 
-    def __init__(self, opinion_id: str, start_line: int, num_lines: int):
-        super().__init__(opinion_id=opinion_id, start_line=start_line, num_lines=num_lines)
-        self.opinion_id = opinion_id
-        self.start_line = start_line
-        self.num_lines = num_lines
 
 
 class EditScratchpad(Action):
@@ -514,9 +456,3 @@ class EditScratchpad(Action):
             "required": False
         }
     }
-
-    def __init__(self, operation: str, content: str, position: int = None):
-        super().__init__(operation=operation, content=content, position=position)
-        self.operation = operation
-        self.content = content
-        self.position = position
