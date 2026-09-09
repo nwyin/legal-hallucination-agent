@@ -45,10 +45,6 @@ agent:
   courtlistener_search_enabled: true
   courtlistener_opinion_access_enabled: true
 
-# Optional final-performance summary (span scoring and trajectory recording always run)
-evaluation:
-  enabled: false  # Track the final submitted prediction in task_performance_summary
-
 # Search Configuration
 search:
   top_k: 3

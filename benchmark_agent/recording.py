@@ -1,4 +1,4 @@
-"""Recording: episode metrics collection, its factories, and episode logging."""
+"""Recording: episode metrics collection and episode logging."""
 
 import json
 import logging
@@ -6,8 +6,6 @@ import os
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
-
-from .evaluation import TaskPerformanceTracker
 
 if TYPE_CHECKING:
     from .agent import Agent
@@ -43,7 +41,6 @@ class EpisodeMetrics:
     total_reward: float = 0.0
     final_outcome: Optional[str] = None
     step_metrics: List[StepMetrics] = None
-    task_performance_summary: Optional[Dict[str, Any]] = None
     
     def __post_init__(self):
         if self.step_metrics is None:
@@ -54,26 +51,12 @@ class MetricsCollector:
     Collects and stores metrics during agent execution for later analysis.
     """
     
-    def __init__(
-        self, 
-        task_performance_tracker: Optional[TaskPerformanceTracker] = None,
-        save_dir: str = "metrics"
-    ):
-        """
-        Initialize the metrics collector.
-        
-        Args:
-            task_performance_tracker: Optional task performance tracker for prediction evaluation
-            save_dir: Directory to save metrics files
-        """
-        self.task_performance_tracker = task_performance_tracker
+    def __init__(self, save_dir: str = "metrics"):
         self.save_dir = save_dir
         self.current_episode: Optional[EpisodeMetrics] = None
         self.step_count = 0
-        
-        # Ensure save directory exists
         os.makedirs(save_dir, exist_ok=True)
-    
+
     def start_episode(
         self, 
         episode_id: str, 
@@ -109,20 +92,6 @@ class MetricsCollector:
         self.step_count = 0
         
         logger.info(f"Started metrics collection for episode {episode_id}")
-    
-    def set_task_performance_ground_truth(self, ground_truth: Any, environment: Any = None) -> None:
-        """
-        Set the ground truth for task performance tracking.
-        
-        Args:
-            ground_truth: The correct answer for evaluation
-            environment: Optional environment instance to use for is_correct() evaluation
-        """
-        if self.task_performance_tracker:
-            self.task_performance_tracker.set_ground_truth(ground_truth, self.current_episode.task_name, environment)
-            logger.info(f"Set ground truth for task performance tracking: {ground_truth}")
-        else:
-            logger.warning("Task performance tracker not available - cannot set ground truth")
     
     def record_step(
         self, 
@@ -166,31 +135,13 @@ class MetricsCollector:
         
         logger.info(f"Recorded metrics for step {self.step_count}: {action_type}")
 
-    def record_final_prediction(self, agent, environment=None) -> None:
-        """
-        Evaluate the agent's final submitted prediction once (no per-step evaluation).
-        Uses the already-submitted answer; does not call the LLM.
-
-        Call this after the episode loop, before end_episode().
-        """
-        if not self.task_performance_tracker or not self.current_episode:
-            return
-        try:
-            self.task_performance_tracker.evaluate_final_prediction(
-                agent=agent,
-                environment=environment,
-                step=self.step_count,
-            )
-        except Exception as e:
-            logger.warning(f"Final prediction evaluation failed: {e}")
-
     def end_episode(self, final_outcome: Optional[str] = None, extra_data: Optional[Dict[str, Any]] = None) -> str:
         """
         End the current episode and save metrics.
         
         Args:
             final_outcome: Optional final outcome description
-            extra_data: Optional dict to merge into saved JSON (e.g. list_hallucinations, predicted_hallucinations for legal_hallucination_checker)
+            extra_data: Optional dict to merge into the saved JSON (ground truth, prediction, scores)
             
         Returns:
             Path to the saved metrics file
@@ -203,10 +154,6 @@ class MetricsCollector:
         self.current_episode.end_time = datetime.now().isoformat()
         self.current_episode.total_steps = self.step_count
         self.current_episode.final_outcome = final_outcome
-        
-        # Get task performance summary if available
-        if self.task_performance_tracker:
-            self.current_episode.task_performance_summary = self.task_performance_tracker.get_performance_summary()
         
         # Save metrics directly to save_dir/{episode_id}.json
         # The caller is responsible for setting save_dir to the appropriate path
@@ -252,24 +199,6 @@ class MetricsCollector:
     
     
     
-# --- Factories ---
-
-
-def create_metrics_collector(
-    save_dir: str = "metrics",
-    enable_task_performance_tracking: bool = True,
-) -> MetricsCollector:
-    """Create an episode recorder with optional final-prediction tracking.
-
-    Disabling task performance tracking leaves trajectory recording available.
-    No model calls are needed to collect metrics or score submitted predictions.
-    """
-    tracker = TaskPerformanceTracker() if enable_task_performance_tracking else None
-    collector = MetricsCollector(task_performance_tracker=tracker, save_dir=save_dir)
-    logger.info(f"Created metrics collector with save directory: {save_dir}")
-    return collector
-
-
 # --- Episode logging ---
 
 

@@ -76,7 +76,7 @@ def main():
                     summary = run.run_single_example(
                         method=config["method"], example=example, paths_config={}, search_config=config["search"],
                         env_settings={"max_steps": 3}, model_config=config["model"], agent_config=config["agent"],
-                        eval_settings=config["evaluation"], output_dir=output, metrics_dir=output,
+                        output_dir=output, metrics_dir=output,
                         example_id="synthetic-langfuse-smoke", dataset="tracing-smoke",
                     )
                 finally:

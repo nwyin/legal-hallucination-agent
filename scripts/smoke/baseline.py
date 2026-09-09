@@ -58,7 +58,7 @@ def main():
         "agent": {"thinking_enabled": True, "open_web_search_enabled": False,
                   "courtlistener_search_enabled": False, "courtlistener_opinion_access_enabled": False,
                   "max_tokens": {"action_selection": 2048, "belief_update": 2048, "prediction": 2048}},
-        "step_budgets": [0, 3], "search": {"top_k": 3}, "evaluation": {"enabled": True},
+        "step_budgets": [0, 3], "search": {"top_k": 3},
         "transport_overrides": {"temperature": 0, "seed": 42, "extra_body": {"reasoning": {"enabled": False}}},
         "allowed_actions": ["THINK", "EDIT_SCRATCHPAD", "PROVIDE_FINAL_RESPONSE"],
     }
@@ -128,7 +128,7 @@ def main():
         summary = runner.run_single_example(
             method=config["method"], example=example, paths_config={}, search_config=config["search"],
             env_settings={"max_steps": budget}, model_config=config["model"], agent_config=config["agent"],
-            eval_settings=config["evaluation"], output_dir=str(out / "outputs"), metrics_dir=str(out / "metrics"),
+            output_dir=str(out / "outputs"), metrics_dir=str(out / "metrics"),
             example_id=example["filename"], dataset="smoke",
         )
         if not summary.get("metrics_filepath"):

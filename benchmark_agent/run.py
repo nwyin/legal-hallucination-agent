@@ -25,8 +25,9 @@ from .agent import Agent
 from .environment import Environment, HallucinationCheckerEnvironment, Observation
 from .llm import ModelAPI
 from .prompts import LegalHallucinationCheckerDomainKnowledge
+from .evaluation import aggregate_metrics, compute_metrics, evaluate_entry, evaluate_hallucination_entry, extract_ground_truth
 from .recording import (
-    create_metrics_collector,
+    MetricsCollector,
     log_initial_state,
     log_step_header,
     log_action_basic,
@@ -49,23 +50,6 @@ TASK_BELIEF_PRIOR = (
     "You begin with no knowledge of which citations are hallucinated."
 )
 TASK_DOMAIN_KNOWLEDGE = LegalHallucinationCheckerDomainKnowledge()
-
-
-def extract_hallucination_ground_truth(data: Dict[str, Any]) -> Any:
-    """
-    Resolve hallucination ground-truth field from known dataset variants.
-
-    Supported aliases:
-    - list_hallucinations
-    - listed_hallucinations
-    - list_hallucinationss (legacy typo seen in some rows)
-    """
-    if not data:
-        return []
-    for key in ("list_hallucinations", "listed_hallucinations", "list_hallucinationss"):
-        if key in data and data.get(key) is not None:
-            return data.get(key)
-    return []
 
 
 # =============================================================================
@@ -451,12 +435,6 @@ def run_episode(
     if predicted_hallucinations is None:
         predicted_hallucinations = getattr(agent, "last_final_response_list", None)
 
-    # Hallucination checker: compute precision, recall, F1
-    precision = recall = f1 = None
-    from .evaluation import (
-        evaluate_entry,
-        compute_metrics,
-    )
     # evaluate_entry accepts both a list of spans and a {span: type} dict.
     gt_found, gt_total, correct_pred, pred_total = evaluate_entry(
         environment.key, predicted_hallucinations
@@ -641,7 +619,6 @@ def run_single_example(
     env_settings: Dict[str, Any],
     model_config: Dict[str, Any],
     agent_config: Dict[str, Any],
-    eval_settings: Dict[str, Any],
     output_dir: str,
     metrics_dir: str,
     example_id: str,
@@ -672,7 +649,7 @@ def run_single_example(
     _method_with_steps = f"{method}_steps{_max_steps}"
     safe_example_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(example_id))
     opinion_cache = os.path.join(opinion_cache_base, _model_id, _method_with_steps, safe_example_id)
-    gt = extract_hallucination_ground_truth(example)
+    gt = extract_ground_truth(example)
     env_config = {
         'brief_info': {
             'list_hallucinations': gt,
@@ -706,12 +683,7 @@ def run_single_example(
     method_with_steps = f"{method}_steps{max_steps}" if max_steps is not None else method
     example_metrics_dir = os.path.join(metrics_dir, dataset, model_id, method_with_steps)
     
-    # This toggle controls the final-performance summary only; recording and
-    # the episode's final span scoring remain available regardless.
-    metrics_collector = create_metrics_collector(
-        save_dir=example_metrics_dir,
-        enable_task_performance_tracking=eval_settings.get('enabled', True),
-    )
+    metrics_collector = MetricsCollector(save_dir=example_metrics_dir)
 
     # Start metrics collection
     metrics_collector.start_episode(
@@ -723,28 +695,23 @@ def run_single_example(
         model_id=model_config.get('model_id')
     )
     
-    # Set ground truth (pass environment for consistent is_correct() evaluation)
-    ground_truth = env_config.get('list_hallucinations') or env_config.get('brief_info', {}).get('list_hallucinations')
-    if ground_truth is not None:
-        metrics_collector.set_task_performance_ground_truth(ground_truth, environment)
-    
-    # Run episode
+    ground_truth = env_config['brief_info']['list_hallucinations']
+
     with propagate_attributes(
         tags=["legal-hallucination-checker", method],
         metadata={"dataset": dataset, "example_id": example_id, "method": method},
     ):
         summary = run_episode(agent, environment, metrics_collector)
 
-        # Evaluate final prediction once (no per-step prediction evaluation)
-        metrics_collector.record_final_prediction(agent, environment)
-    
-    # End metrics collection; include ground truth + prediction + raw response for evaluation
+    # Save ground truth, prediction, raw response, and scores alongside the trajectory.
+    predicted = summary.get("predicted_hallucinations")
     extra_data = {
         "list_hallucinations": ground_truth or [],
-        "predicted_hallucinations": summary.get("predicted_hallucinations"),
-        "final_response_raw": summary.get("final_response"),  # actual agent response string before parsing
+        "predicted_hallucinations": predicted,
+        "final_response_raw": summary.get("final_response"),  # agent response string before parsing
+        **compute_metrics(*evaluate_entry(ground_truth, predicted)),
     }
-    if extra_data.get("final_response_raw") is None:
+    if summary.get("final_response") is None:
         metrics_filepath = None
     else:
         metrics_filepath = metrics_collector.end_episode(extra_data=extra_data)
@@ -803,7 +770,6 @@ def main(cfg: DictConfig):
     env_settings = OmegaConf.to_container(cfg.environment, resolve=True)
     agent_config = OmegaConf.to_container(cfg.agent, resolve=True)
     model_config = resolve_agent_model_config(cfg)
-    eval_settings = OmegaConf.to_container(cfg.get('evaluation', {}), resolve=True)
 
     # Check API key
     if not check_required_api_keys(agent_config):
@@ -889,7 +855,6 @@ def main(cfg: DictConfig):
                 env_settings=env_settings,
                 model_config=model_config,
                 agent_config=agent_config,
-                eval_settings=eval_settings,
                 output_dir=output_dir,
                 metrics_dir=metrics_dir,
                 example_id=ex_id,
@@ -920,7 +885,6 @@ def main(cfg: DictConfig):
     
     # Log batch summary
     if len(results) > 1:
-        from .evaluation import aggregate_metrics, evaluate_hallucination_entry
         entries = [
             {"list_hallucinations": r.get("true_answer") or [], "predicted_hallucinations": r.get("predicted_hallucinations")}
             for r in results
