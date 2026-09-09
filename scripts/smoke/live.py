@@ -3,14 +3,12 @@
 import argparse
 import json
 import logging
-import sys
 import time
 from pathlib import Path
 from unittest.mock import patch
 from uuid import uuid4
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
+from _common import ROOT, restrict_actions
 
 
 def main():
@@ -62,12 +60,7 @@ def main():
     factory = run.create_environment
 
     def environment(settings):
-        env = factory(settings)
-        env.action_space = [a for a in env.action_space if a in allowed]
-        env.initial_observation.metadata["available_actions"] = [
-            a.value for a in env.action_space
-        ]
-        return env
+        return restrict_actions(factory(settings), allowed)
 
     client = llm.get_client().with_options(timeout=20, max_retries=0)
     model = llm.ModelAPI()

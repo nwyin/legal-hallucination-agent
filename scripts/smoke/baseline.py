@@ -5,15 +5,15 @@ import hashlib
 import json
 import logging
 import os
-import socket
 import subprocess
 import sys
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
+from _common import ROOT, block_network, restrict_actions
+
 if "replay" in sys.argv:
     os.environ["OTEL_SDK_DISABLED"] = "true"
 from dotenv import load_dotenv
@@ -53,6 +53,11 @@ def main():
     parser.add_argument("mode", choices=["record", "replay"])
     parser.add_argument("--directory", type=Path, default=ROOT / "reference_data/smoke")
     args = parser.parse_args()
+    with block_network() if args.mode == "replay" else nullcontext():
+        run(args)
+
+
+def run(args):
     base = args.directory.resolve()
     recording = args.mode == "record"
     if not recording:
@@ -133,30 +138,10 @@ def main():
     allowed = {ActionType(x) for x in config["allowed_actions"]}
 
     def create_environment(settings):
-        env = original_factory(settings)
-        env.action_space = [a for a in env.action_space if a in allowed]
-        env.initial_observation.metadata["available_actions"] = [
-            a.value for a in env.action_space
-        ]
-        original_step = env.step
-
-        def step(action):
-            if action is not None and action.action_type not in allowed:
-                raise RuntimeError("Smoke run blocked an external/retrieval action")
-            return original_step(action)
-
-        env.step = step
-        return env
+        return restrict_actions(original_factory(settings), allowed)
 
     runner.create_environment = create_environment
     original_client = llm_module.get_client
-    if not recording:
-
-        def no_network(*args, **kwargs):
-            raise RuntimeError("Network access forbidden during replay")
-
-        socket.socket.connect = no_network
-        socket.create_connection = no_network
     results = []
     for budget in config["step_budgets"]:
         tape_path = base / f"steps_{budget}.json"

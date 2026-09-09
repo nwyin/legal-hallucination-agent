@@ -8,41 +8,33 @@ type to the right client, and that the observations keep their existing shape.
 
 import json
 import os
-import socket
-import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
+from _common import block_network, restrict_actions
+
 os.environ["OTEL_SDK_DISABLED"] = "true"
 
 
-def _no_network(*args, **kwargs):
-    raise RuntimeError("Network access forbidden during offline checks")
-
-
-socket.socket.connect = _no_network
-socket.create_connection = _no_network
-
-from benchmark_agent import (
-    actions,
-    courtlistener,
-    documents,
-    environment,
-    evaluation,
-    parsing,
-    web_search,
-)
-from benchmark_agent.actions import (
-    Action,
-    ActionType,
-    get_action_class,
-    get_all_action_classes,
-)
-from benchmark_agent.environment import HallucinationCheckerEnvironment
+with block_network():
+    from benchmark_agent import (
+        actions,
+        courtlistener,
+        documents,
+        environment,
+        evaluation,
+        parsing,
+        web_search,
+    )
+    from benchmark_agent.actions import (
+        Action,
+        ActionType,
+        get_action_class,
+        get_all_action_classes,
+    )
+    from benchmark_agent.environment import HallucinationCheckerEnvironment
 
 CHECKS = []
 
@@ -555,6 +547,58 @@ def timezone_boundaries():
     )
 
 
+@check
+def smoke_helpers_restore_network_and_guard_actions():
+    import socket
+
+    original = (
+        socket.socket.connect,
+        socket.socket.connect_ex,
+        socket.create_connection,
+    )
+    try:
+        with block_network():
+            with socket.socket() as connection:
+                for connect in (
+                    connection.connect,
+                    connection.connect_ex,
+                    socket.create_connection,
+                ):
+                    try:
+                        connect(("127.0.0.1", 1))
+                    except RuntimeError:
+                        pass
+                    else:
+                        raise AssertionError("Network call was not blocked")
+            raise ValueError("synthetic failure")
+    except ValueError:
+        pass
+    assert (
+        socket.socket.connect,
+        socket.socket.connect_ex,
+        socket.create_connection,
+    ) == original
+
+    with tempfile.TemporaryDirectory() as tmp:
+        env = make_environment(tmp)
+        dispatched = []
+        env.step = lambda action: dispatched.append(action)
+        restrict_actions(env, {ActionType.THINK})
+        assert env.action_space == [ActionType.THINK]
+        assert env.initial_observation.metadata["available_actions"] == ["THINK"]
+        allowed = SimpleNamespace(action_type=ActionType.THINK)
+        env.step(allowed)
+        env.step(None)
+        try:
+            env.step(SimpleNamespace(action_type=ActionType.OPEN_WEB_SEARCH))
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("Disallowed action reached environment")
+        assert dispatched == [allowed, None]
+
+
+@block_network()
 def main():
     failures = 0
     for fn in CHECKS:
