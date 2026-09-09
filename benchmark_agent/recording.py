@@ -3,7 +3,7 @@
 import json
 import logging
 import os
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -26,11 +26,6 @@ class StepMetrics:
     action_type: str
     action_content: str
     reward: Optional[float] = None
-    # Task performance tracking fields
-    prediction: Optional[str] = None
-    prediction_confidence: Optional[float] = None
-    prediction_correct: Optional[bool] = None
-    prediction_accuracy: Optional[float] = None
     metadata: Optional[Dict[str, Any]] = None
 
 @dataclass
@@ -221,11 +216,7 @@ class MetricsCollector:
         filename = f"{self.current_episode.episode_id}.json"
         filepath = os.path.join(self.save_dir, filename)
         
-        # Convert to dict for JSON serialization
         episode_dict = asdict(self.current_episode)
-        
-        # Convert SearchResult objects to dictionaries for JSON serialization
-        episode_dict = self._convert_search_results_to_dict(episode_dict)
         
         # Merge extra task-specific data (e.g. ground truth + prediction for hallucination checker)
         if extra_data:
@@ -244,33 +235,6 @@ class MetricsCollector:
         
         return filepath
     
-    def _convert_search_results_to_dict(self, obj):
-        """
-        Recursively convert SearchResult objects to dictionaries for JSON serialization.
-        """
-        if isinstance(obj, dict):
-            return {key: self._convert_search_results_to_dict(value) for key, value in obj.items()}
-        elif isinstance(obj, list):
-            return [self._convert_search_results_to_dict(item) for item in obj]
-        elif hasattr(obj, '__class__') and 'SearchResult' in obj.__class__.__name__:
-            # Convert SearchResult object to dictionary
-            if hasattr(obj, '__dict__'):
-                return obj.__dict__
-            else:
-                # Fallback if SearchResult doesn't have __dict__
-                return {
-                    "title": getattr(obj, 'title', ''),
-                    "url": getattr(obj, 'url', ''),
-                    "content": getattr(obj, 'content', ''),
-                    "snippet": getattr(obj, 'snippet', ''),
-                    "score": getattr(obj, 'score', 0.0),
-                    "published_date": getattr(obj, 'published_date', None),
-                    "result_id": getattr(obj, 'result_id', ''),
-                    "metadata": getattr(obj, 'metadata', {})
-                }
-        else:
-            return obj
-    
     def _extract_action_content(self, action) -> str:
         content_parts = []
         
@@ -288,74 +252,6 @@ class MetricsCollector:
     
     
     
-    @staticmethod
-    def load_episode_metrics(filepath: str) -> EpisodeMetrics:
-        """
-        Load episode metrics from a JSON file.
-        
-        Args:
-            filepath: Path to the metrics JSON file
-            
-        Returns:
-            EpisodeMetrics object
-        """
-        with open(filepath, 'r') as f:
-            data = json.load(f)
-        
-        # Ignore fields outside the current schema, including historical diagnostics.
-        step_fields = {field.name for field in fields(StepMetrics)}
-        step_metrics = [
-            StepMetrics(**{key: value for key, value in step_data.items() if key in step_fields})
-            for step_data in data.get('step_metrics', [])
-        ]
-        
-        # Create EpisodeMetrics object
-        episode = EpisodeMetrics(
-            episode_id=data['episode_id'],
-            task_name=data['task_name'],
-            agent_type=data['agent_type'],
-            environment_info=data['environment_info'],
-            start_time=data['start_time'],
-            method=data.get('method'),
-            model_id=data.get('model_id'),
-            end_time=data.get('end_time'),
-            total_steps=data.get('total_steps', 0),
-            total_reward=data.get('total_reward', 0.0),
-            final_outcome=data.get('final_outcome'),
-            step_metrics=step_metrics,
-            task_performance_summary=data.get('task_performance_summary'),
-        )
-        
-        return episode
-    
-    @staticmethod
-    def load_all_metrics(metrics_dir: str) -> List[EpisodeMetrics]:
-        """
-        Load all episode metrics from a directory with new structure.
-        Searches in metrics/{task_name}/{method}/{episode_id}.json
-        
-        Args:
-            metrics_dir: Directory containing metrics JSON files
-            
-        Returns:
-            List of EpisodeMetrics objects
-        """
-        episodes = []
-        
-        # Walk through the directory structure: metrics/{task_name}/{method}/
-        for root, dirs, files in os.walk(metrics_dir):
-            for filename in files:
-                if filename.endswith('.json') and not filename.endswith('_summary.json'):
-                    filepath = os.path.join(root, filename)
-                    try:
-                        episode = MetricsCollector.load_episode_metrics(filepath)
-                        episodes.append(episode)
-                    except Exception as e:
-                        logger.warning(f"Failed to load metrics from {filename}: {e}")
-        
-        return episodes
-
-
 # --- Factories ---
 
 
@@ -368,22 +264,10 @@ def create_metrics_collector(
     Disabling task performance tracking leaves trajectory recording available.
     No model calls are needed to collect metrics or score submitted predictions.
     """
-    tracker = create_task_performance_tracker() if enable_task_performance_tracking else None
+    tracker = TaskPerformanceTracker() if enable_task_performance_tracking else None
     collector = MetricsCollector(task_performance_tracker=tracker, save_dir=save_dir)
     logger.info(f"Created metrics collector with save directory: {save_dir}")
     return collector
-
-
-def create_task_performance_tracker() -> TaskPerformanceTracker:
-    """
-    Create a configured task performance tracker.
-    
-    Returns:
-        Configured TaskPerformanceTracker instance
-    """
-    tracker = TaskPerformanceTracker()
-    logger.info("Created task performance tracker")
-    return tracker
 
 
 # --- Episode logging ---
@@ -418,67 +302,20 @@ def log_initial_state(agent: "Agent", environment: "Environment", observation, t
     logger.info(f"Action Space: {[a.value for a in agent.action_space]}")
     logger.info(f"Thinking Enabled: {getattr(agent, 'thinking_enabled', 'N/A')}")
     logger.info(f"Open Web Search Enabled: {getattr(agent, 'open_web_search_enabled', 'N/A')}")
-    
-    log_first_step_prompts(agent, environment, observation)
-
-
-def log_first_step_prompts(agent: "Agent", environment: "Environment", observation):
-    if environment.max_steps == 0:
-        return
-
-    # Action selection prompt
-    try:
-        action_space = agent.action_space
-        env_desc = getattr(environment, 'get_environment_description', lambda: str(environment))()
-        search_capabilities = getattr(environment, 'get_search_capabilities', lambda: "")()
-        
-        system_prompt = agent.action_selection_prompt_constructor.get_system_prompt(
-            action_space=action_space,
-            environment_description=env_desc,
-            search_capabilities=search_capabilities
-        )
-        user_prompt = agent.action_selection_prompt_constructor.get_user_prompt(
-            observation=observation,
-            history=[],
-            current_beliefs=getattr(agent, 'get_current_beliefs', lambda: "No beliefs yet")(),
-            max_steps=environment.max_steps,
-            task_instance_description=getattr(environment, 'question', '')
-        )
-        
-        log_section("ACTION SELECTION PROMPT (First Step)", "-")
-        logger.info(f"System Prompt:\n{system_prompt[:1000]}...\n[truncated]")
-        logger.info(f"\nUser Prompt:\n{user_prompt[:1000]}...\n[truncated]")
-    except Exception as e:
-        logger.warning(f"Could not log action selection prompt: {e}")
-    
-    # Belief update prompt (not used when max_steps=0)
-    if hasattr(agent, 'belief_update_prompt_constructor') and environment.max_steps != 0:
-        try:
-            env_desc = getattr(environment, 'get_environment_description', lambda: str(environment))()
-            belief_system = agent.belief_update_prompt_constructor.get_system_prompt(
-                environment_description=env_desc
-            )
-            log_section("BELIEF UPDATE PROMPT (First Step)", "-")
-            logger.info(f"System Prompt:\n{belief_system[:1000]}...\n[truncated]")
-        except Exception as e:
-            logger.warning(f"Could not log belief update prompt: {e}")
 
 
 # =============================================================================
 # STEP LOGGING
 # =============================================================================
 
+def _preview(result, limit: int) -> str:
+    text = json.dumps(result) if isinstance(result, dict) else str(result)
+    return text[:limit] + "..." if len(text) > limit else text
+
+
 def log_step_header(step_num: int, observation):
     log_section(f"STEP {step_num}")
-    result = observation.result
-    if isinstance(result, str):
-        obs_preview = result[:300] + '...' if len(result) > 300 else result
-    elif isinstance(result, dict):
-        import json
-        obs_preview = json.dumps(result)[:300] + '...' if len(json.dumps(result)) > 300 else json.dumps(result)
-    else:
-        obs_preview = str(result)[:300] + '...' if len(str(result)) > 300 else str(result)
-    logger.info(f"Current Observation: {obs_preview}")
+    logger.info(f"Current Observation: {_preview(observation.result, 300)}")
 
 
 def log_action_basic(action) -> str:
@@ -525,21 +362,10 @@ def log_search_action(action, observation, action_type: str):
     
     logger.info(f"  Query: {query}")
     logger.info(f"  Number of Results: {num_results}")
-    
-    if action_type == "OPEN_WEB_SEARCH":
-        _log_web_search_results(observation)
 
 
 def log_generic_observation(observation):
-    result = observation.result
-    if isinstance(result, str):
-        obs_preview = result[:500] + '...' if len(result) > 500 else result
-    elif isinstance(result, dict):
-        import json
-        obs_preview = json.dumps(result)[:500] + '...' if len(json.dumps(result)) > 500 else json.dumps(result)
-    else:
-        obs_preview = str(result)[:500] + '...' if len(str(result)) > 500 else str(result)
-    logger.info(f"\n  Observation Result: {obs_preview}")
+    logger.info(f"\n  Observation Result: {_preview(observation.result, 500)}")
 
 
 def log_beliefs(agent: "Agent"):
@@ -558,32 +384,3 @@ def log_beliefs(agent: "Agent"):
         beliefs_str = str(current_beliefs)
     
     logger.info(f"\n  Current Beliefs: {beliefs_str}")
-
-
-# =============================================================================
-# SEARCH RESULT HELPERS (internal)
-# =============================================================================
-
-def _log_web_search_results(observation):
-    web_results = observation.metadata.get('web_search_results', [])
-    if not web_results:
-        return
-    
-    logger.info(f"  Web Search Results:")
-    for i, result in enumerate(web_results[:3]):
-        if hasattr(result, 'snippet'):
-            snippet = result.snippet
-            result_id = getattr(result, 'result_id', 'N/A')
-            title = getattr(result, 'title', 'N/A')
-            url = getattr(result, 'url', 'N/A')
-        else:
-            snippet = result.get('snippet', '') if isinstance(result, dict) else ''
-            result_id = result.get('result_id', 'N/A') if isinstance(result, dict) else 'N/A'
-            title = result.get('title', 'N/A') if isinstance(result, dict) else 'N/A'
-            url = result.get('url', 'N/A') if isinstance(result, dict) else 'N/A'
-        
-        truncated_snippet = snippet[:300] + "..." if len(snippet) > 300 else snippet
-        logger.info(f"    {i + 1}. {result_id}: {title}")
-        logger.info(f"       URL: {url}")
-        logger.info(f"       Snippet: {truncated_snippet}")
-        logger.info("")
