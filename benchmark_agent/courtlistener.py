@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Any
 
 import backoff
-import certifi
 import requests as requests_original
 import requests_cache
 from dateutil import parser as date_parser
@@ -68,9 +67,7 @@ def make_courtlistener_request(endpoint: str, params: dict[str, Any]) -> dict[st
     logger.debug(f"Making request to {url} with params: {params}")
     time.sleep(RATE_LIMIT_DELAY)
     with capture_http("request-courtlistener", "GET", url, params=params) as capture:
-        response = requests.get(
-            url, params=params, headers=headers, verify=certifi.where()
-        )
+        response = requests.get(url, params=params, headers=headers)
         capture(response)
     if not response.ok:
         logger.error(
@@ -175,7 +172,6 @@ def lookup_citation(cite: str, max_attempts: int = 3) -> list[dict[str, Any]]:
                     headers=headers,
                     json={"text": cite},
                     timeout=30,
-                    verify=certifi.where(),
                 )
                 capture(resp)
             if resp.status_code == 429:
