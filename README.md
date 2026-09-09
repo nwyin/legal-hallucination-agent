@@ -108,9 +108,11 @@ The project currently targets Python 3.12.
 Use `uv add <package>` and `uv remove <package>` to manage dependencies.
 After editing `pyproject.toml` manually, run `uv lock` and `uv sync`.
 
-Set the required key(s) as environment variables, especially:
+Set the required key(s) as environment variables:
 
 - `OPENROUTER_API_KEY` (for all LLM calls)
+- `SERPAPI_API_KEY` (for `OPEN_WEB_SEARCH`; required when `agent.open_web_search_enabled` is true)
+- `COURTLISTENER_API_KEY` (optional; raises CourtListener rate limits)
 
 ## Langfuse tracing
 

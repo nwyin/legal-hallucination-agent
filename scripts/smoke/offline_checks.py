@@ -209,18 +209,41 @@ def date_parsing_and_cutoff_filtering():
 
 
 @check
-def search_clients_make_http_requests():
-    """Exercise both real client request methods with only HTTP mocked."""
-    for client_class in (web_search.SerpApiClient, web_search.MediaStackClient):
-        client = client_class(api_key="offline-placeholder", max_retries=0)
-        payload = {"results": [{"title": "offline result"}]}
-        response = SimpleNamespace(raise_for_status=lambda: None, json=lambda: payload)
-        with patch("requests.get", return_value=response) as get:
-            result = client._make_request_with_retry(
-                "https://example.invalid/search", {"q": "test query"}
-            )
-        get.assert_called_once_with("https://example.invalid/search", params={"q": "test query"})
-        assert result == payload
+def search_client_makes_http_requests():
+    """Exercise the real SerpAPI request method with only HTTP mocked."""
+    client = web_search.SerpApiClient(api_key="offline-placeholder", max_retries=0)
+    payload = {"results": [{"title": "offline result"}]}
+    response = SimpleNamespace(raise_for_status=lambda: None, json=lambda: payload)
+    with patch("requests.get", return_value=response) as get:
+        result = client._make_request_with_retry("https://example.invalid/search", {"q": "test query"})
+    get.assert_called_once_with("https://example.invalid/search", params={"q": "test query"})
+    assert result == payload
+
+
+@check
+def web_search_failure_is_an_error_observation():
+    """A missing SerpAPI key surfaces as an error, not as an empty result list."""
+    with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"SERPAPI_API_KEY": ""}):
+        env = make_environment(tmp)
+        obs = env.step(actions.OpenWebSearch(query="fake v case"))
+    assert obs.metadata.get("error"), obs.metadata
+    assert "SERPAPI_API_KEY" in obs.metadata["error"]
+
+
+@check
+def web_search_keeps_undated_results():
+    """Undated Google organic results reach the agent (the paper's web hits carry no dates)."""
+    original = web_search.SerpApiClient.google_search
+    web_search.SerpApiClient.google_search = lambda self, query, **kw: {
+        "organic_results": [{"title": "undated", "link": "u", "snippet": "s", "position": 1}]}
+    try:
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"SERPAPI_API_KEY": "offline"}):
+            env = make_environment(tmp)
+            obs = env.step(actions.OpenWebSearch(query="fake v case"))
+    finally:
+        web_search.SerpApiClient.google_search = original
+    assert obs.result["num_results"] == 1, obs.result
+    assert obs.result["search_results"][0]["title"] == "undated"
 
 
 @check

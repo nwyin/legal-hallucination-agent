@@ -325,7 +325,7 @@ class OpenWebSearchAction(BaseModel):
 class OpenCourtListenerSearchAction(BaseModel):
     action_type: Literal[ActionType.OPEN_COURTLISTENER_SEARCH.value] = Field(..., description="The type of action")
     query: str = Field(..., description="The search query to find relevant legal cases and documents (must be non-empty, e.g. a citation like '965 F.2d 962' or a case name)")
-    search_type: Optional[str] = Field(None, description="The type of search to perform. Options: 'opinions', 'oral_arguments', 'people', 'dockets', 'recap', 'idb' (default: 'opinions')")
+    search_type: Optional[str] = Field(None, description="The type of search to perform. Options: 'opinions', 'cases', 'dockets', 'filings', 'judges', 'oral_arguments' (default: 'opinions')")
     court: Optional[str] = Field(None, description="The court to search (e.g., 'scotus', 'ca1', 'ca2') (default: 'scotus')")
     date_filter: Optional[Dict[str, Any]] = Field(None, description="Date filter with 'field' and 'before'/'after' keys (e.g., {'field': 'date_filed', 'before': '2022-01-01', 'after': '2021-01-01'}). Dates in YYYY-MM-DD format. Only 'date_filed' field is supported.")
 

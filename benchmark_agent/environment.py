@@ -346,16 +346,14 @@ class HallucinationCheckerEnvironment(Environment):
         )
         
         try:
-            # Get automatic date cutoff to prevent data leakage
-            # cutoff_date = self._get_resolution_cutoff_date()
-            
-            # Perform web search with automatic date cutoff
+            # Google organic results usually carry no publication date, so excluding
+            # undated results would silently drop nearly every web hit. The paper's
+            # trajectories (Appendix A4) show undated web results being used.
             search_results = search_web(
-                query=query, 
-                search_type=search_type,  # Respect action's search_type parameter
+                query=query,
+                search_type=search_type,
                 num_results=k,
-                # cutoff_date=cutoff_date,  # Automatic date cutoff to prevent data leakage
-                exclude_undated=True,  # Conservative: exclude undated results
+                exclude_undated=False,
             )
             
             # Create structured search results

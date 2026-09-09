@@ -117,6 +117,7 @@ def setup_api_keys():
     keys = {
         "OPENROUTER_API_KEY": "OpenRouter",
         "COURTLISTENER_API_KEY": "CourtListener",
+        "SERPAPI_API_KEY": "SerpAPI",
     }
     for env_var, name in keys.items():
         if os.getenv(env_var):
@@ -124,20 +125,21 @@ def setup_api_keys():
         else:
             print(f"⚠ {env_var} not found")
 
-def check_required_api_key(provider: str) -> bool:
-    key_map = {
-        "openrouter": "OPENROUTER_API_KEY",
-    }
+def check_required_api_keys(provider: str, agent_config: Dict[str, Any]) -> bool:
     normalized_provider = (provider or "").lower().strip()
     if normalized_provider != "openrouter":
         logger.error("Only OpenRouter is supported. Set agent.model.provider to 'openrouter'.")
         return False
-    required_key = key_map.get(normalized_provider)
-    if required_key and not os.getenv(required_key):
-        logger.error(f"{required_key} is required but not found")
-        print(f"Please set: export {required_key}='your_key'")
-        return False
-    return True
+    required = ["OPENROUTER_API_KEY"]
+    # Without this key every OPEN_WEB_SEARCH would fail; refuse to run rather than
+    # silently benchmark an agent that cannot use one of the paper's eight actions.
+    if agent_config.get("open_web_search_enabled", False):
+        required.append("SERPAPI_API_KEY")
+    missing = [key for key in required if not os.getenv(key)]
+    for key in missing:
+        logger.error(f"{key} is required but not found")
+        print(f"Please set: export {key}='your_key'")
+    return not missing
 
 
 def _enforce_openrouter_provider(cfg: Dict[str, Any], cfg_name: str) -> Dict[str, Any]:
@@ -820,7 +822,7 @@ def main(cfg: DictConfig):
 
     model_config = _enforce_openrouter_provider(model_config, "agent.model.provider")
     # Check API key
-    if not check_required_api_key(model_config.get('provider')):
+    if not check_required_api_keys(model_config.get('provider'), agent_config):
         return
     output_dir = cfg.get('output_dir', 'outputs')
     metrics_dir = cfg.get('metrics_dir', 'metrics')
