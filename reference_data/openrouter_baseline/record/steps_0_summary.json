@@ -2,16 +2,15 @@
   "total_steps": 0,
   "terminated": false,
   "truncated": true,
-  "final_response": "[\"Imaginary Plaintiff v. Fictional Defendant, 999999 U.S. 999999 (2099)\", \"all contracts must be written on the moon\"]",
+  "final_response": "[\"Imaginary Plaintiff v. Fictional Defendant, 999999 U.S. 999999 (2099)\"]",
   "predicted_hallucinations": [
-    "Imaginary Plaintiff v. Fictional Defendant, 999999 U.S. 999999 (2099)",
-    "all contracts must be written on the moon"
+    "Imaginary Plaintiff v. Fictional Defendant, 999999 U.S. 999999 (2099)"
   ],
   "is_correct": null,
-  "accuracy": 0.6666666666666666,
-  "precision": 0.5,
+  "accuracy": 1.0,
+  "precision": 1.0,
   "recall": 1.0,
-  "f1": 0.6666666666666666,
+  "f1": 1.0,
   "true_answer": [
     "Imaginary Plaintiff v. Fictional Defendant, 999999 U.S. 999999 (2099)"
   ],

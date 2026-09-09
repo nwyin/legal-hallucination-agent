@@ -51,7 +51,8 @@ def main():
             base = ROOT / "reference_data/openrouter_baseline"
             config = json.loads((base / "config.json").read_text())
             example = json.loads((base / "input.json").read_text())
-            responses = iter(json.loads((base / "steps_3.json").read_text()))
+            tape = json.loads((base / "steps_3.json").read_text())
+            responses = iter(tape)
             calls = []
 
             def respond(request):
@@ -81,7 +82,7 @@ def main():
                 finally:
                     flush_traces()
                     client.close()
-            assert len(calls) == 5
+            assert len(calls) == len(tape), (len(calls), len(tape))
             assert summary["f1"] == 1.0
             trace_id = summary["langfuse_trace_id"]
             spans = [s for s in exported if format(s.context.trace_id, "032x") == trace_id]
@@ -93,14 +94,18 @@ def main():
             assert root.attributes["langfuse.observation.input"]
             assert root.attributes["langfuse.observation.output"]
             generations = [s for s in spans if s.attributes.get("langfuse.observation.type") == "generation"]
-            assert len(generations) == 5
+            assert len(generations) == len(tape), (len(generations), len(tape))
             for generation in generations:
                 assert generation.parent is not None
                 assert generation.attributes.get("langfuse.observation.model.name")
                 assert generation.attributes.get("langfuse.observation.usage_details")
                 assert generation.attributes.get("langfuse.observation.input")
                 assert generation.attributes.get("langfuse.observation.output")
-            for name in ("select-action", "update-beliefs", "predict-hallucinations", "edit-scratchpad", "think"):
+            action_spans = {step["action"].action_type.value.lower().replace("_", "-") for step in summary["history"]}
+            expected_spans = {"select-action", "update-beliefs", *action_spans}
+            if summary["total_steps"] >= 3:  # the prediction prompt only runs when the step budget forces it
+                expected_spans.add("predict-hallucinations")
+            for name in expected_spans:
                 assert any(s.name == name for s in spans), name
             if not args.export:
                 os.environ["TRACING_TEST_API_KEY"] = "secret-for-masking-check"

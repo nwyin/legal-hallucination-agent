@@ -15,9 +15,10 @@ from .tracing import langfuse, observe
 from .actions import Action, ActionType, get_action_class
 from .environment import Environment, Observation
 from .llm import ModelAPI
+from pydantic import ValidationError
+
 from .parsing import (
-    parse_action_output_with_fallback,
-    create_unified_action_guard,
+    parse_action_response,
     normalize_action_parameters_for_construction,
     parse_prediction_response,
     normalize_yes_no_answers,
@@ -232,6 +233,8 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
     
     Unlike IDS-OED, this agent does not maintain meta-level design beliefs (D).
     """
+
+    MAX_ACTION_REASKS = 3
     
     def __init__(
         self,
@@ -600,88 +603,51 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
     
     def _call_llm_for_action_selection(self, messages: List[Dict[str, str]]) -> Optional[Action]:
         """
-        Call LLM for action selection and parse the response.
-        
-        Args:
-            messages: List of message dictionaries for LLM call
-            
+        Call the LLM for action selection and parse the response into an Action.
+
+        On a malformed or invalid response, re-ask with the validation error
+        (up to MAX_ACTION_REASKS times) before giving up.
+
         Returns:
-            Parsed Action object, or None if parsing fails
+            Parsed Action object, or None if every attempt fails
         """
         logger.info("Calling LLM for BOED action selection")
-        
         action_selection_max_tokens = self.max_tokens_config.get('action_selection', self.max_tokens)
-        
-        def build_action(validated_output: Dict[str, Any]) -> Action:
-            action_type = validated_output["action_type"]
-            parameters = validated_output["parameters"]
-            self._store_final_response_list_if_applicable(action_type, parameters)
-            parameters = normalize_action_parameters_for_construction(action_type, parameters)
-            action_class = get_action_class(ActionType(action_type))
-            return action_class(**parameters)
-
-        try:
-            # Try unified guard first (handles formatting and validation)
-            unified_guard = create_unified_action_guard(
-                model_api=self.model_api,
+        conversation = list(messages)
+        for attempt in range(self.MAX_ACTION_REASKS + 1):
+            response = self.model_api(
                 model_id=self.model_id,
-                max_tokens=action_selection_max_tokens,
+                prompt=conversation,
                 temperature=self.temperature,
-                num_reasks=3
+                max_tokens=action_selection_max_tokens,
+                seed=self.seed,
             )
-            guard_response = unified_guard(messages)
-            validated_output = guard_response.validated_output
-            if validated_output:
-                try:
-                    return build_action(validated_output)
-                except ValueError as ve:
-                    if "query" in str(ve).lower() or "non-empty" in str(ve).lower():
-                        reask_msg = (
-                            "Your previous response had an empty search query. "
-                            "For OPEN_COURTLISTENER_SEARCH or OPEN_WEB_SEARCH you must provide a non-empty 'query' "
-                            "(e.g. a citation like '965 F.2d 962' or a case name). Please respond again with a valid query."
-                        )
-                        guard_response2 = unified_guard(messages + [{"role": "user", "content": reask_msg}])
-                        if guard_response2.validated_output:
-                            return build_action(guard_response2.validated_output)
-                    raise
-            raise ValueError("Guard returned no validated output")
-        except Exception as e:
-            logger.warning(f"Unified guard parsing failed: {e}, trying fallback approach")
             try:
-                response = self.model_api(
-                    model_id=self.model_id,
-                    prompt=messages,
-                    max_tokens=action_selection_max_tokens,
-                    temperature=self.temperature,
-                    seed=self.seed
+                action_type, parameters = parse_action_response(response)
+                if ActionType(action_type) not in self.action_space:
+                    raise ValueError(
+                        f"{action_type} is not available in this run. Available actions: "
+                        f"{[a.value for a in self.action_space]}"
+                    )
+                self._store_final_response_list_if_applicable(action_type, parameters)
+                parameters = normalize_action_parameters_for_construction(action_type, parameters)
+                return get_action_class(ActionType(action_type))(**parameters)
+            except (ValueError, ValidationError, TypeError, KeyError) as e:
+                logger.warning(f"Action parsing failed (attempt {attempt + 1}/{self.MAX_ACTION_REASKS + 1}): {e}")
+                if attempt == self.MAX_ACTION_REASKS:
+                    return None
+                reask = (
+                    "Your previous response was not a valid action. Error:\n"
+                    f"{e}\n\n"
+                    "Respond again with a single JSON object of the form "
+                    '{"action": {"action_type": "...", <required parameters>}, "reasoning": "..."} '
+                    "using one of the available actions and non-empty required parameters."
                 )
-                validated_output = parse_action_output_with_fallback(response)
-                action_type = validated_output["action_type"]
-                parameters = validated_output["parameters"]
-                try:
-                    return build_action(validated_output)
-                except ValueError as ve:
-                    if "query" in str(ve).lower() or "non-empty" in str(ve).lower():
-                        reask_content = (
-                            "Your previous response had an empty search query. "
-                            "For OPEN_COURTLISTENER_SEARCH or OPEN_WEB_SEARCH you must provide a non-empty 'query' "
-                            "(e.g. a citation or case name). Reply with a new JSON action including a valid query."
-                        )
-                        response2 = self.model_api(
-                            model_id=self.model_id,
-                            prompt=messages + [{"role": "user", "content": reask_content}],
-                            max_tokens=action_selection_max_tokens,
-                            temperature=self.temperature,
-                            seed=self.seed
-                        )
-                        validated_output2 = parse_action_output_with_fallback(response2)
-                        return build_action(validated_output2)
-                    raise
-            except Exception as fallback_e:
-                logger.warning(f"Fallback parsing also failed: {fallback_e}, returning None")
-                return None
-    
+                conversation = messages + [
+                    {"role": "assistant", "content": response or ""},
+                    {"role": "user", "content": reask},
+                ]
+
     def _get_available_action_types(self) -> List[ActionType]:
         return self.action_space.copy()
     

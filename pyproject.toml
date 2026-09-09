@@ -6,19 +6,15 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "backoff==2.2.1",
     "certifi==2025.7.14",
-    "guardrails-ai==0.6.6",
     "hydra-core==1.3.2",
     "langfuse==4.15.1",
     "omegaconf==2.3.0",
-    # Guardrails 0.6.6 requires OpenAI 1.x.
     "openai==1.109.1",
     "pydantic==2.12.5",
     "python-dateutil==2.9.0.post0",
     "python-dotenv==1.1.1",
     "requests==2.32.4",
     "requests-cache==1.2.1",
-    # Guardrails imports pkg_resources without declaring setuptools.
-    "setuptools==80.9.0",
     "tqdm==4.67.1",
 ]
 

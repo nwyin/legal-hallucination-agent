@@ -1,7 +1,6 @@
 {
   "method": "boed_citation_tracker",
   "model": {
-    "provider": "openrouter",
     "model_id": "moonshotai/kimi-k2.5",
     "temperature": 0,
     "seed": 42

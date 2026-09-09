@@ -258,21 +258,63 @@ def web_search_keeps_undated_results():
 @check
 def action_parsing_round_trip():
     """Model output parses into the action parameters the environment expects."""
-    parsed = parsing.parse_action_output_with_fallback(
+    action_type, parameters = parsing.parse_action_response(
         '```json\n{"action": {"action_type": "OPEN_WEB_SEARCH", "query": "  fake v case  "}}\n```'
     )
-    assert parsed["action_type"] == "OPEN_WEB_SEARCH", parsed
-    assert parsed["parameters"] == {"query": "  fake v case  "}, parsed
-    action_class = get_action_class(ActionType(parsed["action_type"]))
-    action = action_class(**parsing.normalize_action_parameters_for_construction(
-        parsed["action_type"], parsed["parameters"]))
-    assert action.query == "fake v case"
-    try:
-        parsing.normalize_action_parameters_for_construction(parsed["action_type"], {"query": "   "})
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("Empty search query must be rejected")
+    assert action_type == "OPEN_WEB_SEARCH", action_type
+    assert parameters == {"query": "fake v case"}, parameters  # omitted optionals stay omitted
+    action = get_action_class(ActionType(action_type))(
+        **parsing.normalize_action_parameters_for_construction(action_type, parameters))
+    assert action.query == "fake v case" and action.search_type == "web"
+    for bad in ('{"action": {"action_type": "OPEN_WEB_SEARCH", "query": "   "}}',
+                '{"action": {"action_type": "NOT_AN_ACTION"}}', "no json here"):
+        try:
+            parsing.parse_action_response(bad)
+        except (ValueError, parsing.ValidationError):
+            pass
+        else:
+            raise AssertionError(f"Must reject: {bad}")
+
+
+@check
+def action_selection_reasks_on_invalid_output():
+    """An invalid action response is re-asked with the error; the retry is used."""
+    from benchmark_agent.agent import BOEDCitationTrackerAgent
+    responses = iter(['{"action": {"action_type": "OPEN_WEB_SEARCH", "query": ""}}',
+                      '{"action": {"action_type": "THINK", "thought": "second try"}}'])
+    calls = []
+
+    def fake_model_api(model_id, prompt, **kwargs):
+        calls.append(prompt)
+        return next(responses)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        agent = BOEDCitationTrackerAgent(environment=make_environment(tmp), model_api=fake_model_api,
+                                         model_id="offline", open_web_search_enabled=True)
+        action = agent._call_llm_for_action_selection([{"role": "user", "content": "choose"}])
+    assert isinstance(action, actions.Think) and action.thought == "second try", action
+    assert len(calls) == 2 and len(calls[1]) == 3, [len(c) for c in calls]
+    assert calls[1][1]["role"] == "assistant" and "not a valid action" in calls[1][2]["content"]
+
+
+@check
+def action_selection_rejects_disabled_actions():
+    """An action outside the agent's configured action space is re-asked, not executed."""
+    from benchmark_agent.agent import BOEDCitationTrackerAgent
+    responses = iter(['{"action": {"action_type": "OPEN_WEB_SEARCH", "query": "fake v case"}}',
+                      '{"action": {"action_type": "THINK", "thought": "no web search"}}'])
+    calls = []
+
+    def fake_model_api(model_id, prompt, **kwargs):
+        calls.append(prompt)
+        return next(responses)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        agent = BOEDCitationTrackerAgent(environment=make_environment(tmp), model_api=fake_model_api,
+                                         model_id="offline", open_web_search_enabled=False)
+        action = agent._call_llm_for_action_selection([{"role": "user", "content": "choose"}])
+    assert isinstance(action, actions.Think), action
+    assert len(calls) == 2 and "not available in this run" in calls[1][2]["content"], calls[1]
 
 
 @check

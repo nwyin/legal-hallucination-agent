@@ -142,8 +142,7 @@ this does **not** anonymize legal text or detect arbitrary PII. Set
 `LANGFUSE_CAPTURE_CONTENT=false` to redact inputs, outputs, metadata, and error
 messages while retaining model usage and timing. Set `LANGFUSE_TRACING_ENABLED=false`
 to disable tracing altogether. An explicit `OTEL_SDK_DISABLED=true` also disables
-tracing and must be removed to see traces. Guardrails usage telemetry is disabled
-separately so it does not require disabling all OpenTelemetry.
+tracing and must be removed to see traces.
 
 Optional SDK settings include `LANGFUSE_SAMPLE_RATE` (0–1) and `LANGFUSE_RELEASE`.
 See Langfuse's [tracing best practices](https://langfuse.com/docs/observability/best-practices).
