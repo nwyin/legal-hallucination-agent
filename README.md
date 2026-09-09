@@ -11,6 +11,75 @@ The paper introduces:
 - The LePhantomCite dataset of 1,300 brief excerpts with injected hallucinations.
 - Agentic and non-agentic benchmarking of models for citation verification using tools like CourtListener, showing strong gains from retrieval-guided verification but persistent weakness on subtle citation errors.
 
+## Paper datasets used for benchmark runs
+
+- **Primary benchmark dataset:** LePhantomCite (1,300 excerpts), introduced in the paper.
+- Dataset composition:
+  - 1,000 excerpts from federal appellate briefs with injected hallucinations.
+  - 300 excerpts from LLM-generated holdings (Dahl et al., 2024), cross-verified in the paper.
+- Public split names used by the dataset card: `aux_train` (910 rows) and `eval` (390 rows), corresponding to the paper’s 70/30 train/evaluation split.
+- The paper’s benchmark evaluations are run on the `eval` split (390 examples).
+- The paper also references a separate controlled study over 92 drafting prompts to measure hallucination rates across ChatGPT generations (not the LePhantomCite benchmark split).
+
+## Pulling LePhantomCite and running the benchmark here
+
+The dataset in this repo is expected in JSONL rows with:
+- `text` (brief excerpt text)
+- `list_hallucinations` (dict or list of hallucinated spans/types)
+- `filename` (used as example id)
+
+You can normalize from Hugging Face into the expected structure with:
+
+```bash
+uv add datasets
+
+uv run --locked python - <<'PY'
+import json
+from datasets import load_dataset
+
+dataset = load_dataset("ai-law-society-lab/Legal_Phantom_Citation", split="eval")
+
+with open("data/LePhantomCite-eval.jsonl", "w", encoding="utf-8") as f:
+    for row in dataset:
+        f.write(
+            json.dumps(
+                {
+                    "filename": row.get("filename"),
+                    "text": row.get("text", ""),
+                    "list_hallucinations": row.get("hallucinations", {}),
+                    "list_hallucination_types": row.get("list_hallucination_types", []),
+                    "citations_in_segment": row.get("citations_in_segment", []),
+                },
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
+
+print("Wrote data/LePhantomCite-eval.jsonl")
+PY
+```
+
+Then run the benchmark:
+
+```bash
+uv run --locked python -m benchmark_agent.run \
+  --config-name=legal_hallucination_checker_gpt \
+  data.dataset_path=data/LePhantomCite-eval.jsonl \
+  data.id_field=filename \
+  dataset=legal_phantom_eval \
+  environment.max_steps=30
+```
+
+To run a single example:
+
+```bash
+uv run --locked python -m benchmark_agent.run \
+  --config-name=legal_hallucination_checker_gpt \
+  data.dataset_path=data/LePhantomCite-eval.jsonl \
+  data.id_field=filename \
+  data.example_id=<filename>
+```
+
 ## How It Works
 
 The agent uses **Bayesian Optimal Experimental Design (BOED)** to strategically select which citation to investigate next. It maintains a running list of citations found in the brief, tracking verification status (pending / verified / hallucinated) for each. The belief state is represented in natural language and updated after each observation, so the agent is less likely to forget previously checked citations.
