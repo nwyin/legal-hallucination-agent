@@ -122,7 +122,6 @@ def main():
                 TemporaryDirectory() as output,
                 patch.object(llm, "get_client", return_value=client),
                 patch.object(run, "create_environment", environment),
-                patch.object(run.time, "sleep"),
             ):
                 try:
                     summary = run.run_single_example(

@@ -10,8 +10,6 @@ import hashlib
 import json
 import logging
 import os
-import random
-import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -339,7 +337,6 @@ def run_episode(
                 )
                 break
 
-            time.sleep(random.uniform(1, 3))  # Polite delay to avoid rate limits
             observation = environment.step(action)
             agent.update_state(action, observation)
 
