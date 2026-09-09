@@ -109,10 +109,10 @@ def setup_experiment_logging(
     experiments_dir: str = "outputs/experiments",
 ):
     """Add a file handler writing to {experiments_dir}/{dataset}/{model_id}/{method}/{example_id}_{timestamp}.log."""
-    log_dir = os.path.join(experiments_dir, dataset, model_id, method)
-    os.makedirs(log_dir, exist_ok=True)
-    log_filepath = os.path.join(
-        log_dir, f"{example_id}_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.log"
+    log_dir = Path(experiments_dir) / dataset / model_id / method
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_filepath = log_dir / (
+        f"{example_id}_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.log"
     )
     file_handler = logging.FileHandler(log_filepath)
     file_handler.setLevel(logging.INFO)
@@ -121,7 +121,7 @@ def setup_experiment_logging(
     )
     logging.getLogger().addHandler(file_handler)
     logger.info(f"Experiment log: {log_filepath}")
-    return log_filepath
+    return str(log_filepath)
 
 
 def check_required_api_keys(agent_config: dict[str, Any]) -> bool:
@@ -181,7 +181,7 @@ def method_key(method: str, max_steps: int) -> str:
 def episode_metrics_dir(
     metrics_dir: str, dataset: str, model_id: str, method: str, max_steps: int
 ) -> str:
-    return os.path.join(metrics_dir, dataset, model_id, method_key(method, max_steps))
+    return str(Path(metrics_dir) / dataset / model_id / method_key(method, max_steps))
 
 
 def episode_opinion_cache_dir(
@@ -193,23 +193,20 @@ def episode_opinion_cache_dir(
     example_id: str,
 ) -> str:
     """Per-episode opinion cache, so parallel runs never clear each other's opinions."""
-    base = paths_config.get("opinion_cache_dir") or os.path.join(
-        output_dir, "opinion_cache"
-    )
+    base = paths_config.get("opinion_cache_dir") or Path(output_dir) / "opinion_cache"
     safe_example_id = "".join(
         c if c.isalnum() or c in "-_" else "_" for c in str(example_id)
     )
-    return os.path.join(base, model_id, method_key(method, max_steps), safe_example_id)
+    return str(Path(base) / model_id / method_key(method, max_steps) / safe_example_id)
 
 
 def clear_opinion_cache(opinion_cache_dir: str) -> None:
-    if not opinion_cache_dir or not os.path.isdir(opinion_cache_dir):
+    if not opinion_cache_dir or not Path(opinion_cache_dir).is_dir():
         return
     try:
-        for name in os.listdir(opinion_cache_dir):
-            path = os.path.join(opinion_cache_dir, name)
-            if os.path.isfile(path) and name.endswith(".json"):
-                os.remove(path)
+        for path in Path(opinion_cache_dir).iterdir():
+            if path.is_file() and path.name.endswith(".json"):
+                path.unlink()
     except OSError as e:
         logger.warning(f"Failed to clear opinion cache at {opinion_cache_dir}: {e}")
 
@@ -617,11 +614,11 @@ def main(cfg: DictConfig):
     metrics_dir = cfg.get("metrics_dir", "metrics")
     if cfg.get("test_run", False):
         logger.info("TEST RUN mode enabled")
-        metrics_dir = os.path.join(metrics_dir, "test")
-        output_dir = os.path.join(output_dir, "test")
+        metrics_dir = str(Path(metrics_dir) / "test")
+        output_dir = str(Path(output_dir) / "test")
 
     dataset_path = data_config.get("dataset_path")
-    if not dataset_path or not os.path.exists(dataset_path):
+    if not dataset_path or not Path(dataset_path).exists():
         logger.error(f"Dataset not found: {dataset_path}")
         return
     logger.info(f"Loading examples from: {dataset_path}")
@@ -721,17 +718,15 @@ def main(cfg: DictConfig):
         )
         logger.info(f"{'=' * 60}")
 
-        batch_results_path = os.path.join(
-            output_dir, dataset, method, "batch_results.json"
-        )
-        os.makedirs(os.path.dirname(batch_results_path), exist_ok=True)
+        batch_results_path = Path(output_dir) / dataset / method / "batch_results.json"
+        batch_results_path.parent.mkdir(parents=True, exist_ok=True)
         batch_data = {
             "results": [
                 {k: v for k, v in r.items() if k != "history"} for r in results
             ],
             "aggregate_metrics": agg,
         }
-        with open(batch_results_path, "w") as f:
+        with batch_results_path.open("w") as f:
             json.dump(batch_data, f, indent=2, default=str)
         logger.info(f"Batch results saved to: {batch_results_path}")
 

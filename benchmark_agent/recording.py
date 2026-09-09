@@ -2,9 +2,9 @@
 
 import json
 import logging
-import os
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -59,7 +59,7 @@ class MetricsCollector:
         self.save_dir = save_dir
         self.current_episode: EpisodeMetrics | None = None
         self.step_count = 0
-        os.makedirs(save_dir, exist_ok=True)
+        Path(save_dir).mkdir(parents=True, exist_ok=True)
 
     def start_episode(
         self,
@@ -168,10 +168,10 @@ class MetricsCollector:
         # Save metrics directly to save_dir/{episode_id}.json
         # The caller is responsible for setting save_dir to the appropriate path
         # (e.g., metrics/{task}/{model_id}/{method}/)
-        os.makedirs(self.save_dir, exist_ok=True)
+        Path(self.save_dir).mkdir(parents=True, exist_ok=True)
 
         filename = f"{self.current_episode.episode_id}.json"
-        filepath = os.path.join(self.save_dir, filename)
+        filepath = Path(self.save_dir) / filename
 
         episode_dict = asdict(self.current_episode)
 
@@ -179,7 +179,7 @@ class MetricsCollector:
         if extra_data:
             episode_dict.update(extra_data)
 
-        with open(filepath, "w") as f:
+        with filepath.open("w") as f:
             json.dump(episode_dict, f, indent=2)
 
         logger.info(f"Episode metrics saved to {filepath}")
@@ -190,7 +190,7 @@ class MetricsCollector:
         self.current_episode_method = None
         self.step_count = 0
 
-        return filepath
+        return str(filepath)
 
     def _extract_action_content(self, action) -> str:
         content_parts = []
