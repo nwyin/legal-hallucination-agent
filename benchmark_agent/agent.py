@@ -6,7 +6,6 @@
   is a list of citations, quotes, and holdings described in words.
 """
 
-import json
 import logging
 import re
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -14,6 +13,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from .tracing import langfuse, observe
 from .actions import Action, ActionType, get_action_class
 from .environment import Environment, Observation
+from .evaluation import parse_predictions
 from .llm import ModelAPI
 from pydantic import ValidationError
 
@@ -513,27 +513,20 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
                 if is_valid:
                     break
                 logger.warning(f"Final response empty or invalid (attempt {attempt + 1}/{max_prediction_retries}), retrying...")
-            # Store list for evaluation (handles JSON array strings, semicolon-separated, etc.)
-            self._store_final_response_list_if_applicable(
-                ActionType.PROVIDE_FINAL_RESPONSE.value,
-                {"response": prediction}
-            )
+            # Store list for evaluation (handles JSON array strings and plain text)
+            self.store_final_response(prediction)
             # Create PROVIDE_FINAL_RESPONSE action from prediction
             action_class = get_action_class(ActionType.PROVIDE_FINAL_RESPONSE)
             action = action_class(response=prediction)
         else:
-            # Build action selection prompts and get action from LLM
+            # Build action selection prompts and get action from LLM. When the
+            # model chooses PROVIDE_FINAL_RESPONSE, _call_llm_for_action_selection
+            # stores the parsed list for evaluation.
             messages = self._build_action_selection_prompts(observation)
             if messages is None:
                 return None
             action = self._call_llm_for_action_selection(messages)
-            # When agent chooses PROVIDE_FINAL_RESPONSE (before final step), store for evaluation
-            if action and action.action_type == ActionType.PROVIDE_FINAL_RESPONSE:
-                self._store_final_response_list_if_applicable(
-                    ActionType.PROVIDE_FINAL_RESPONSE.value,
-                    action.get_input_parameters() if hasattr(action, 'get_input_parameters') else {"response": getattr(action, 'response', None)}
-                )
-        
+
         if action:
             # Increment step counter after successful parsing
             self.current_step += 1
@@ -629,7 +622,10 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
                         f"{action_type} is not available in this run. Available actions: "
                         f"{[a.value for a in self.action_space]}"
                     )
-                self._store_final_response_list_if_applicable(action_type, parameters)
+                if action_type == ActionType.PROVIDE_FINAL_RESPONSE.value:
+                    self.store_final_response(parameters.get("response"))
+                else:
+                    self.last_final_response_list = None
                 parameters = normalize_action_parameters_for_construction(action_type, parameters)
                 return get_action_class(ActionType(action_type))(**parameters)
             except (ValueError, ValidationError, TypeError, KeyError) as e:
@@ -651,31 +647,14 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
     def _get_available_action_types(self) -> List[ActionType]:
         return self.action_space.copy()
     
-    def _store_final_response_list_if_applicable(self, action_type: str, parameters: Dict[str, Any]) -> None:
-        self.last_final_response_list = None
-        if action_type != ActionType.PROVIDE_FINAL_RESPONSE.value:
-            return
-        r = parameters.get("response")
-        if isinstance(r, list):
-            self.last_final_response_list = [str(x) for x in r]
-        elif isinstance(r, str) and r:
-            # Try JSON array (e.g. '["cite1", "cite2"]'); otherwise treat whole string as single item (no ";" split)
-            r_stripped = r.strip()
-            if r_stripped.startswith("["):
-                try:
-                    parsed = json.loads(r_stripped)
-                    if isinstance(parsed, list):
-                        self.last_final_response_list = [str(x) for x in parsed]
-                    else:
-                        self.last_final_response_list = [r]
-                except (json.JSONDecodeError, TypeError):
-                    self.last_final_response_list = [r]
-            else:
-                # Single string (semicolon no longer used as separator to avoid splitting citation text)
-                self.last_final_response_list = [r_stripped] if r_stripped else []
-        else:
-            self.last_final_response_list = []
-    
+    def store_final_response(self, response: Any) -> None:
+        """Record the final response as the list of predicted hallucinations.
+
+        A JSON list (a list value or a string containing one) becomes one item
+        per element; any other non-empty string counts as a single prediction.
+        """
+        self.last_final_response_list = parse_predictions(response)
+
     def update_state(self, action: Action, observation: Observation):
         """
         Update the agent's internal state based on the action and observation.

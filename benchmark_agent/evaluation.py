@@ -14,11 +14,17 @@ logger = logging.getLogger(__name__)
 # --- Hallucination checker scoring ---
 
 
-def _extract_list_from_string(s: str) -> List[str]:
+def _extract_list_from_string(s: str) -> Optional[List[str]]:
+    """Return the first JSON list embedded in `s`, or None if there is none.
+
+    The scanner is quote- and escape-aware so brackets inside string items do
+    not end the list early. A list that is present but invalid JSON also yields
+    None; a valid empty list yields [].
+    """
     s = s.strip()
     start = s.find("[")
     if start == -1:
-        return []
+        return None
     depth = 0
     i = start
     in_string = False
@@ -49,22 +55,25 @@ def _extract_list_from_string(s: str) -> List[str]:
             if depth == 0:
                 try:
                     parsed = json.loads(s[start : i + 1])
-                    return [str(x).strip() for x in parsed if x is not None] if isinstance(parsed, list) else []
+                    return [str(x).strip() for x in parsed if x is not None] if isinstance(parsed, list) else None
                 except json.JSONDecodeError:
-                    return []
+                    return None
         i += 1
-    return []
+    return None
 
 
 def parse_predictions(raw: Any) -> List[str]:
     """
-    Parse predicted_hallucinations into a list of individual predictions.
+    Parse a final response (or a stored predicted_hallucinations value) into a
+    list of individual predictions. This is the single parser used both when the
+    agent records its final answer and when that answer is scored.
 
     Handles:
     - Already a list of items: return as-is (but parse any element that is a string
       containing a JSON list)
-    - String with JSON list + trailing text: extract list
-    - None, empty, or invalid: return []
+    - String containing a JSON list (possibly with surrounding text): extract the list
+    - Any other non-empty string: the whole stripped string is one prediction
+    - None or empty: return []
     """
     if raw is None:
         return []
@@ -83,9 +92,13 @@ def parse_predictions(raw: Any) -> List[str]:
                     continue
             result.append(s)
         return result
-    if not isinstance(raw, str) or not raw.strip():
+    if not isinstance(raw, str):
         return []
-    return _extract_list_from_string(raw.strip())
+    stripped = raw.strip()
+    if not stripped:
+        return []
+    extracted = _extract_list_from_string(stripped)
+    return extracted if extracted is not None else [stripped]
 
 
 def _normalize(s: str) -> str:

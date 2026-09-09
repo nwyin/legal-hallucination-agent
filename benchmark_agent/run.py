@@ -21,7 +21,6 @@ from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
 from .tracing import langfuse, observe, propagate_attributes, flush_traces
-from .actions import ActionType
 from .agent import Agent, BayesianOptimalExperimentalDesignAgent, BOEDCitationTrackerAgent
 from .environment import Environment, HallucinationCheckerEnvironment, Observation
 from .llm import ModelAPI
@@ -241,9 +240,7 @@ def run_episode(agent: Agent, environment: Environment, metrics_collector: Metri
                 break
             logger.warning(f"Direct prediction empty or invalid (attempt {attempt + 1}/3), retrying...")
         if final_response is not None:
-            agent._store_final_response_list_if_applicable(
-                ActionType.PROVIDE_FINAL_RESPONSE.value, {"response": final_response}
-            )
+            agent.store_final_response(final_response)
     else:
         final_response_retries = 0
         while not environment.is_terminated() and not environment.is_truncated():

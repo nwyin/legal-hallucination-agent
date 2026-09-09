@@ -297,15 +297,14 @@ class HallucinationCheckerEnvironment(Environment):
     
     def _handle_final_response_action(self, action: Action) -> Observation:
         response = getattr(action, "response", "")
-        
-        # Set the answer for the base class's is_correct() method
+
         self.answer = response
-        
+
         # Terminate the episode after final response
         self.terminated = True
-        
-        # Use the custom is_correct method for ordered questions/answers
-        # is_correct = self.is_correct()
+
+        # Scoring (precision/recall/F1) happens in evaluation.py after the episode;
+        # this placeholder is kept because the agent reads the observation metadata.
         is_correct = 0
         observation = Observation(
             result=f"Legal prediction submitted: {response}",
@@ -804,48 +803,7 @@ BRIEF TEXT: {self.brief_text}\n\n"""
     
     def get_search_history(self) -> List[Dict[str, Any]]:
         return self.search_history.copy()
-    
-    def _parse_response_to_list(self, response: str) -> List[str]:
-        if not response or not str(response).strip():
-            return []
-        s = str(response).strip()
-        if s.startswith("["):
-            try:
-                parsed = json.loads(s)
-                if isinstance(parsed, list):
-                    return [str(x).strip() for x in parsed if x is not None]
-            except (json.JSONDecodeError, TypeError):
-                pass
-        return [a.strip() for a in s.split(";") if a.strip()]
 
-    def is_correct(self) -> float:
-        """Check accuracy of the current answer using ordered questions/answers logic.
-        
-        Returns:
-            float: Accuracy as fraction of correct answers (0.0 to 1.0)
-        """
-        if not self.key or not self.answer:
-            return 0.0
-        
-        # Parse the response to extract predicted answers
-        # Prefer JSON array (e.g. '["cite1", "cite2"]'); fallback to semicolon-separated for backward compat
-        predicted_answers_raw = self._parse_response_to_list(self.answer)
-        
-        if not predicted_answers_raw:
-            return 0.0
-        
-        # Normalize predicted answers (handle variations like yes, Yes, YES, Y)
-        def normalize_answer(a: str) -> str:
-            a_upper = a.upper()
-            if a_upper in ['YES', 'Y', 'TRUE']:
-                return 'TRUE'
-            elif a_upper in ['NO', 'N', 'FALSE']:
-                return 'FALSE'
-            return a
-        
-        predicted_answer = normalize_answer(predicted_answers_raw[0])
-        return float(predicted_answer == self.key)
-    
     def is_done(self) -> bool:
         if self.is_truncated():
             return True
