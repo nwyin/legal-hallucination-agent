@@ -9,6 +9,7 @@ import logging
 import os
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import backoff
@@ -26,8 +27,12 @@ class NonRetryableError(Exception):
     """Client error (400/401/403/404) that should not be retried."""
 
 
+# Cache lives under the repo's .cache/ (gitignored) rather than the current
+# working directory, so it lands in the same place no matter where a run starts.
+CACHE_PATH = Path(__file__).resolve().parents[1] / ".cache" / "courtlistener_cache.sqlite"
+
 requests = requests_cache.CachedSession(
-    "courtlistener_cache",
+    str(CACHE_PATH),
     backend="sqlite",
     expire_after=timedelta(days=10),
 )
