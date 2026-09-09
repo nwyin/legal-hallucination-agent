@@ -8,7 +8,7 @@
 
 import logging
 import re
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from .tracing import langfuse, observe
 from .actions import Action, ActionType, get_action_class
@@ -217,6 +217,9 @@ def extract_action_parameters(action: Any) -> Dict[str, Any]:
 
 UNIFORM_TASK_PRIOR = "You have no initial knowledge about the specific task parameters."
 
+# Errors from parsing/validating a model response that warrant re-asking the model.
+REASK_ERRORS = (ValueError, ValidationError, TypeError, KeyError)
+
 
 class BayesianOptimalExperimentalDesignAgent(Agent):
     """
@@ -336,7 +339,41 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
         
         logger.info(f"Initialized BayesianOptimalExperimentalDesignAgent")
         logger.info(f"Environment: {self.environment.__class__.__name__}")
-    
+
+    def _call_with_reask(
+        self,
+        messages: List[Dict[str, str]],
+        parse: Callable[[Optional[str]], Any],
+        reask: Union[str, Callable[[Exception, Optional[str]], str]],
+        attempts: int,
+        **model_kwargs,
+    ) -> Any:
+        """Call the model and parse its response, re-asking on parse failure.
+
+        `parse(response)` returns the parsed value or raises one of REASK_ERRORS.
+        On failure the conversation becomes `messages + [assistant: response,
+        user: reask]` (where `reask` is a string or `(error, response) -> str`)
+        and the model is called again, up to `attempts` calls in total. The
+        first call sends `messages` unchanged. Raises the last parse error once
+        every attempt has failed.
+        """
+        conversation = messages
+        for attempt in range(attempts):
+            response = self.model_api(prompt=conversation, **model_kwargs)
+            try:
+                return parse(response)
+            except REASK_ERRORS as e:
+                logger.warning(
+                    "Model response could not be used (attempt %s/%s): %s. Response: %r",
+                    attempt + 1, attempts, e, response,
+                )
+                if attempt + 1 == attempts:
+                    raise
+                conversation = messages + [
+                    {"role": "assistant", "content": response or ""},
+                    {"role": "user", "content": reask(e, response) if callable(reask) else reask},
+                ]
+
     @observe(name="update-beliefs", capture_input=False)
     def update_beliefs(self, observation: Observation, action: Action) -> str:
         """
@@ -376,42 +413,33 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
         ]
         
         belief_update_max_tokens = self.max_tokens_config.get('belief_update', self.max_tokens)
-        max_belief_update_retries = 3
-        updated_beliefs = ""
-        for attempt in range(max_belief_update_retries):
-            if attempt == 0:
-                attempt_messages = messages
-            else:
-                reask_msg = (
+        max_belief_update_attempts = 3
+
+        def non_empty(response: Optional[str]) -> str:
+            text = str(response).strip() if response is not None else ""
+            if not text:
+                raise ValueError("empty belief-update response")
+            return text
+
+        logger.info("Calling LLM for BOED belief update using model=%s", self.belief_update_model_id)
+        try:
+            updated_beliefs = self._call_with_reask(
+                messages,
+                non_empty,
+                reask=(
                     "Your last belief-update response was empty. "
                     "Return a non-empty JSON object with a non-empty 'task_beliefs' string."
-                )
-                attempt_messages = messages + [{"role": "user", "content": reask_msg}]
-
-            logger.info(
-                "Calling LLM for BOED belief update (attempt %s/%s) using model=%s",
-                attempt + 1,
-                max_belief_update_retries,
-                self.belief_update_model_id,
-            )
-            response = self.model_api(
+                ),
+                attempts=max_belief_update_attempts,
                 model_id=self.belief_update_model_id,
-                prompt=attempt_messages,
                 max_tokens=belief_update_max_tokens,
                 temperature=self.belief_update_temperature,
-                seed=self.seed
+                seed=self.seed,
             )
-            if response is None:
-                updated_beliefs = ""
-            else:
-                updated_beliefs = str(response).strip()
-            if updated_beliefs:
-                break
-
-        if not updated_beliefs:
+        except ValueError as e:
             raise RuntimeError(
-                f"Belief update returned empty response after {max_belief_update_retries} attempts."
-            )
+                f"Belief update returned empty response after {max_belief_update_attempts} attempts."
+            ) from e
 
         logger.info(f"LLM belief update response: {updated_beliefs}")
         
@@ -606,43 +634,44 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
         """
         logger.info("Calling LLM for BOED action selection")
         action_selection_max_tokens = self.max_tokens_config.get('action_selection', self.max_tokens)
-        conversation = list(messages)
-        for attempt in range(self.MAX_ACTION_REASKS + 1):
-            response = self.model_api(
+
+        def parse_action(response: Optional[str]) -> Action:
+            action_type, parameters = parse_action_response(response)
+            if ActionType(action_type) not in self.action_space:
+                raise ValueError(
+                    f"{action_type} is not available in this run. Available actions: "
+                    f"{[a.value for a in self.action_space]}"
+                )
+            if action_type == ActionType.PROVIDE_FINAL_RESPONSE.value:
+                self.store_final_response(parameters.get("response"))
+            else:
+                self.last_final_response_list = None
+            parameters = normalize_action_parameters_for_construction(action_type, parameters)
+            return get_action_class(ActionType(action_type))(**parameters)
+
+        def reask(error: Exception, response: Optional[str]) -> str:
+            return (
+                "Your previous response was not a valid action. Error:\n"
+                f"{error}\n\n"
+                "Respond again with a single JSON object of the form "
+                '{"action": {"action_type": "...", <required parameters>}, "reasoning": "..."} '
+                "using one of the available actions and non-empty required parameters."
+            )
+
+        try:
+            return self._call_with_reask(
+                messages,
+                parse_action,
+                reask,
+                attempts=self.MAX_ACTION_REASKS + 1,
                 model_id=self.model_id,
-                prompt=conversation,
                 temperature=self.temperature,
                 max_tokens=action_selection_max_tokens,
                 seed=self.seed,
             )
-            try:
-                action_type, parameters = parse_action_response(response)
-                if ActionType(action_type) not in self.action_space:
-                    raise ValueError(
-                        f"{action_type} is not available in this run. Available actions: "
-                        f"{[a.value for a in self.action_space]}"
-                    )
-                if action_type == ActionType.PROVIDE_FINAL_RESPONSE.value:
-                    self.store_final_response(parameters.get("response"))
-                else:
-                    self.last_final_response_list = None
-                parameters = normalize_action_parameters_for_construction(action_type, parameters)
-                return get_action_class(ActionType(action_type))(**parameters)
-            except (ValueError, ValidationError, TypeError, KeyError) as e:
-                logger.warning(f"Action parsing failed (attempt {attempt + 1}/{self.MAX_ACTION_REASKS + 1}): {e}")
-                if attempt == self.MAX_ACTION_REASKS:
-                    return None
-                reask = (
-                    "Your previous response was not a valid action. Error:\n"
-                    f"{e}\n\n"
-                    "Respond again with a single JSON object of the form "
-                    '{"action": {"action_type": "...", <required parameters>}, "reasoning": "..."} '
-                    "using one of the available actions and non-empty required parameters."
-                )
-                conversation = messages + [
-                    {"role": "assistant", "content": response or ""},
-                    {"role": "user", "content": reask},
-                ]
+        except REASK_ERRORS as e:
+            logger.error(f"Action parsing failed after {self.MAX_ACTION_REASKS + 1} attempts: {e}")
+            return None
 
     def _get_available_action_types(self) -> List[ActionType]:
         return self.action_space.copy()
@@ -729,40 +758,27 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             prompt = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
             langfuse.update_current_span(input=prompt, metadata={"step": self.current_step})
             
-            # Get prediction from the agent's own model
+            # Get prediction from the agent's own model; re-ask once if the
+            # response cannot be parsed.
             prediction_max_tokens = self.max_tokens_config.get('prediction', self.max_tokens)
-            prediction_kwargs = dict(
-                model_id=self.model_id,
-                prompt=prompt,
-                max_tokens=prediction_max_tokens,
-                temperature=0.1,  # Low temperature for consistent predictions
-                seed=self.seed,
-            )
-            response = self.model_api(**prediction_kwargs)
-
-            # Parse the response; if it fails, retry once with a re-ask message.
             try:
-                prediction, confidence = parse_prediction_response(response)
-            except (ValueError, KeyError) as e:
-                logger.warning(f"Failed to parse prediction response: {response}, error: {e}")
-                reask_msg = (
-                    "Your last response was empty or could not be parsed. "
-                    "Return a non-empty JSON object with an 'action' field containing a non-empty 'response' string "
-                    "and a 'confidence' field (0.0-1.0)."
+                prediction, confidence = self._call_with_reask(
+                    prompt,
+                    parse_prediction_response,
+                    reask=(
+                        "Your last response was empty or could not be parsed. "
+                        "Return a non-empty JSON object with an 'action' field containing a non-empty 'response' string "
+                        "and a 'confidence' field (0.0-1.0)."
+                    ),
+                    attempts=2,
+                    model_id=self.model_id,
+                    max_tokens=prediction_max_tokens,
+                    temperature=0.1,  # Low temperature for consistent predictions
+                    seed=self.seed,
                 )
-                retry_prompt = prompt + [
-                    {"role": "assistant", "content": response or ""},
-                    {"role": "user", "content": reask_msg},
-                ]
-                logger.info("Retrying prediction with re-ask message")
-                retry_kwargs = {**prediction_kwargs, "prompt": retry_prompt}
-                try:
-                    response = self.model_api(**retry_kwargs)
-                    prediction, confidence = parse_prediction_response(response)
-                except (ValueError, KeyError) as e2:
-                    logger.warning(f"Retry also failed: {response}, error: {e2}")
-                    langfuse.update_current_span(level="ERROR", status_message="Prediction parsing failed after retry")
-                    return None, None
+            except REASK_ERRORS:
+                langfuse.update_current_span(level="ERROR", status_message="Prediction parsing failed after retry")
+                return None, None
 
             # Normalize Yes/No answers if applicable
             try:
