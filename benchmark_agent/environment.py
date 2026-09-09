@@ -15,11 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .tracing import langfuse
 from .actions import Action, ActionType
-from .courtlistener import (
-    execute_courtlistener_search,
-    execute_courtlistener_opinion_access,
-    execute_courtlistener_citation_lookup,
-)
+from .courtlistener import NonRetryableError, fetch_opinion, lookup_citation, search_courtlistener
 from .documents import (
     DocumentManager,
     read_document_content as read_document_content_fn,
@@ -435,58 +431,26 @@ class HallucinationCheckerEnvironment(Environment):
             or getattr(self, "search_top_k", 10)
         )
 
-        if not query:
-            error_msg = "CourtListener search failed: missing query"
-            logger.error(error_msg)
-            return Observation(
-                result=f"CourtListener search failed: {error_msg}",
-                metadata={
-                    "action_type": "OPEN_COURTLISTENER_SEARCH",
-                    "query": query,
-                    "error": "missing_query"
-                }
-            )
-
-        try:
-            search_observation = execute_courtlistener_search(query, search_type=search_type)
-        except Exception as exc:
-            error_msg = str(exc)
-            logger.error(f"CourtListener search execution failed: {error_msg}")
-            return Observation(
-                result=f"CourtListener search failed: {error_msg}",
-                metadata={
-                    "action_type": "OPEN_COURTLISTENER_SEARCH",
-                    "query": query,
-                    "search_type": search_type,
-                    "error": error_msg
-                }
-            )
-
-        summary_payload = search_observation.result or {}
-        if isinstance(summary_payload, dict) and summary_payload.get("error"):
-            error_msg = summary_payload["error"]
+        def failed(error_msg: str, **extra_metadata) -> Observation:
             logger.error(f"CourtListener search failed: {error_msg}")
             return Observation(
                 result=f"CourtListener search failed: {error_msg}",
-                metadata={
-                    "action_type": "OPEN_COURTLISTENER_SEARCH",
-                    "query": query,
-                    "search_type": search_type,
-                    "error": error_msg,
-                    "raw_metadata": search_observation.metadata or {}
-                }
+                metadata={"action_type": "OPEN_COURTLISTENER_SEARCH", "query": query, "error": error_msg, **extra_metadata},
             )
 
-        raw_results = []
-        if isinstance(summary_payload, dict):
-            raw_results = summary_payload.get("results", [])
-        elif isinstance(summary_payload, list):
-            raw_results = summary_payload
+        if not query:
+            return failed("missing query")
+        try:
+            summary = search_courtlistener(query, search_type=search_type)
+        except NonRetryableError as exc:
+            # Tell the agent the query itself is the problem so it can rephrase.
+            return failed(f"Search query error: {exc}. Please fix the query and try again.",
+                          search_type=search_type, non_retryable=True)
+        except Exception as exc:
+            return failed(str(exc), search_type=search_type)
 
         structured_results = []
-        for idx, result in enumerate(raw_results[:k]):
-            if not isinstance(result, dict):
-                continue
+        for idx, result in enumerate(summary["results"][:k]):
             metadata = dict(result.get("metadata") or {})
             metadata["position"] = idx + 1
             structured_results.append({
@@ -518,54 +482,54 @@ class HallucinationCheckerEnvironment(Environment):
         return Observation(
             result=observation_result,
             metadata={
-                "action_type": "OPEN_COURTLISTENER_SEARCH",
-                "query": query,
-                "search_type": search_type,
-                "num_results": len(structured_results),
-                "search_results": structured_results,
-                "raw_metadata": search_observation.metadata or {}
+                **observation_result,
+                "raw_metadata": {
+                    "search_type": search_type,
+                    "api_type": summary["api_type"],
+                    "query": query,
+                    "total_results": summary["count"],
+                },
             }
         )
 
     def _handle_courtlistener_opinion_action(self, action: Action) -> Observation:
         opinion_id = (getattr(action, "opinion_id", "") or "").strip()
-        if not opinion_id:
-            error_msg = "ACCESS_COURTLISTENER_OPINION failed: missing opinion_id"
-            logger.error(error_msg)
+
+        def failed(error_msg: str) -> Observation:
+            logger.error(f"ACCESS_COURTLISTENER_OPINION failed: {error_msg}")
             return Observation(
-                result={"error": error_msg, "opinion_id": None, "opinion": None},
-                metadata={
-                    "action_type": "ACCESS_COURTLISTENER_OPINION",
-                    "opinion_id": None,
-                    "error": "missing_opinion_id"
-                }
+                result={"error": error_msg, "opinion_id": opinion_id or None, "opinion": None},
+                metadata={"action_type": "ACCESS_COURTLISTENER_OPINION", "opinion_id": opinion_id or None, "error": error_msg},
             )
+
+        if not opinion_id:
+            return failed("missing opinion_id")
         try:
-            obs = execute_courtlistener_opinion_access(opinion_id)
-            result = obs.result if isinstance(obs.result, dict) else {}
-            if result.get("error") or not result.get("opinion"):
-                return obs
-            opinion = result["opinion"]
-            # Store full opinion to disk (filename = opinion_id)
-            safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(opinion_id))
-            cache_path = os.path.join(self.opinion_cache_dir, f"{safe_id}.json")
-            try:
-                with open(cache_path, "w") as f:
-                    json.dump(opinion, f, indent=2)
-                logger.debug(f"Stored full opinion to {cache_path}")
-            except Exception as e:
-                logger.warning(f"Failed to write opinion cache {cache_path}: {e}")
-            # Register opinion for READ_DOCUMENT (line-windowed reading)
-            plain = self._get_searchable_opinion_text(opinion)
-            if not plain:
-                plain = opinion.get("plain_text", "") if isinstance(opinion, dict) else ""
-            if not isinstance(plain, str):
-                plain = str(opinion)
-            case_name = opinion.get("case_name", "") if isinstance(opinion, dict) else ""
-            self.document_manager.register_opinion(opinion_id, plain, case_name=case_name)
-            # Return observation with snippet only (not full opinion)
-            snippet = (plain[: self.OPINION_SNIPPET_LENGTH] + "...") if len(plain) > self.OPINION_SNIPPET_LENGTH else plain
-            snippet_result = {
+            opinion = fetch_opinion(opinion_id)
+        except Exception as exc:
+            return failed(str(exc))
+
+        # Store full opinion to disk (filename = opinion_id)
+        safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(opinion_id))
+        cache_path = os.path.join(self.opinion_cache_dir, f"{safe_id}.json")
+        try:
+            with open(cache_path, "w") as f:
+                json.dump(opinion, f, indent=2)
+            logger.debug(f"Stored full opinion to {cache_path}")
+        except Exception as e:
+            logger.warning(f"Failed to write opinion cache {cache_path}: {e}")
+        # Register opinion for READ_DOCUMENT (line-windowed reading)
+        plain = self._get_searchable_opinion_text(opinion)
+        if not plain:
+            plain = opinion.get("plain_text", "") if isinstance(opinion, dict) else ""
+        if not isinstance(plain, str):
+            plain = str(opinion)
+        case_name = opinion.get("case_name", "") if isinstance(opinion, dict) else ""
+        self.document_manager.register_opinion(opinion_id, plain, case_name=case_name)
+        # Return observation with snippet only (not full opinion)
+        snippet = (plain[: self.OPINION_SNIPPET_LENGTH] + "...") if len(plain) > self.OPINION_SNIPPET_LENGTH else plain
+        return Observation(
+            result={
                 "action_type": "ACCESS_COURTLISTENER_OPINION",
                 "opinion_id": opinion_id,
                 "case_name": case_name,
@@ -575,48 +539,32 @@ class HallucinationCheckerEnvironment(Environment):
                     f"Full opinion stored. Use SEARCH_LOCAL_OPINION with opinion_id={opinion_id} to search within it. "
                     f"Use READ_DOCUMENT with opinion_id=opinion_{opinion_id} (or {opinion_id}) to read the full text in sections (start_line, num_lines)."
                 ),
+            },
+            metadata={
+                "action_type": "ACCESS_COURTLISTENER_OPINION",
+                "opinion_id": opinion_id,
+                "stored_path": cache_path,
             }
-            return Observation(
-                result=snippet_result,
-                metadata={
-                    "action_type": "ACCESS_COURTLISTENER_OPINION",
-                    "opinion_id": opinion_id,
-                    "stored_path": cache_path,
-                }
-            )
-        except Exception as exc:
-            error_msg = str(exc)
-            logger.error(f"ACCESS_COURTLISTENER_OPINION failed: {error_msg}")
-            return Observation(
-                result={"error": error_msg, "opinion_id": opinion_id, "opinion": None},
-                metadata={
-                    "action_type": "ACCESS_COURTLISTENER_OPINION",
-                    "opinion_id": opinion_id,
-                    "error": error_msg
-                }
-            )
+        )
 
     def _handle_courtlistener_citation_lookup_action(self, action: Action) -> Observation:
         cite = (getattr(action, "cite", "") or "").strip()
+        result = {"action_type": "COURTLISTENER_CITATION_LOOKUP", "cite": cite, "citations": [], "results": []}
+        metadata = {"action_type": "COURTLISTENER_CITATION_LOOKUP", "cite": cite}
+        if not cite:
+            result["error"] = metadata["error"] = "cite is required"
+            return Observation(result=result, metadata=metadata)
         try:
-            return execute_courtlistener_citation_lookup(cite)
+            hits = lookup_citation(cite)
         except Exception as exc:
             logger.error(f"COURTLISTENER_CITATION_LOOKUP failed: {exc}")
-            return Observation(
-                result={
-                    "action_type": "COURTLISTENER_CITATION_LOOKUP",
-                    "cite": cite,
-                    "citations": [],
-                    "results": None,
-                    "error": str(exc),
-                },
-                metadata={
-                    "action_type": "COURTLISTENER_CITATION_LOOKUP",
-                    "cite": cite,
-                    "error": str(exc),
-                },
-            )
-            
+            result["results"] = None
+            result["error"] = metadata["error"] = str(exc)
+            return Observation(result=result, metadata=metadata)
+        result["results"] = hits
+        result["citations"] = [item.get("citation") for item in hits if isinstance(item, dict) and item.get("citation")]
+        return Observation(result=result, metadata=metadata)
+
     def _get_searchable_opinion_text(self, opinion: Any) -> str:
         if not isinstance(opinion, dict):
             return str(opinion)

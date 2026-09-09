@@ -100,40 +100,35 @@ def web_search_dispatch():
 
 @check
 def courtlistener_search_dispatch():
-    """OPEN_COURTLISTENER_SEARCH routes to the relocated CourtListener client."""
+    """OPEN_COURTLISTENER_SEARCH routes to the CourtListener client and wraps its summary."""
     calls = []
-    original = environment.execute_courtlistener_search
+    original = environment.search_courtlistener
 
     def fake_search(query, search_type="opinions", **kwargs):
         calls.append((query, search_type))
-        return Observation(
-            result={"results": [{"caseName": "Fake v. Case", "absolute_url": "/opinion/1/",
-                                 "snippet": "text", "id": 1}]},
-            metadata={"action_type": "OPEN_COURTLISTENER_SEARCH"},
-        )
+        return {"count": 1, "api_type": "o", "results": [{"id": 1, "case_name": "Fake v. Case",
+                "url": "/opinion/1/", "snippet": "text", "metadata": {}}]}
 
-    environment.execute_courtlistener_search = fake_search
+    environment.search_courtlistener = fake_search
     try:
         with tempfile.TemporaryDirectory() as tmp:
             env = make_environment(tmp)
             obs = env.step(actions.OpenCourtListenerSearch(query="fake v case"))
     finally:
-        environment.execute_courtlistener_search = original
+        environment.search_courtlistener = original
     assert calls == [("fake v case", "opinions")], calls
     assert obs.metadata["action_type"] == "OPEN_COURTLISTENER_SEARCH"
+    assert obs.result["search_results"][0]["title"] == "Fake v. Case"
+    assert obs.metadata["raw_metadata"]["total_results"] == 1
 
 
 @check
 def opinion_access_registers_document():
     """ACCESS_COURTLISTENER_OPINION caches the opinion and registers it for READ_DOCUMENT."""
-    original = environment.execute_courtlistener_opinion_access
+    original = environment.fetch_opinion
     text = "\n".join(f"line {i}" for i in range(20))
-
-    def fake_access(opinion_id):
-        return Observation(result={"opinion": {"id": opinion_id, "plain_text": text,
-                                               "case_name": "Fake v. Case"}}, metadata={})
-
-    environment.execute_courtlistener_opinion_access = fake_access
+    environment.fetch_opinion = lambda opinion_id: {"id": opinion_id, "plain_text": text,
+                                                    "case_name": "Fake v. Case"}
     try:
         with tempfile.TemporaryDirectory() as tmp:
             env = make_environment(tmp)
@@ -149,23 +144,23 @@ def opinion_access_registers_document():
             found = env.step(actions.SearchLocalOpinion(opinion_id="4242", search_string="line 7"))
             assert "line 7" in json.dumps(found.result)
     finally:
-        environment.execute_courtlistener_opinion_access = original
+        environment.fetch_opinion = original
 
 
 @check
 def citation_lookup_dispatch():
-    """COURTLISTENER_CITATION_LOOKUP forwards the observation from the client."""
-    original = environment.execute_courtlistener_citation_lookup
-    sentinel = Observation(result={"action_type": "COURTLISTENER_CITATION_LOOKUP", "citations": []},
-                           metadata={"cite": "1 U.S. 1"})
-    environment.execute_courtlistener_citation_lookup = lambda cite: sentinel
+    """COURTLISTENER_CITATION_LOOKUP wraps the client's match list in an observation."""
+    original = environment.lookup_citation
+    environment.lookup_citation = lambda cite: [{"citation": cite, "clusters": []}]
     try:
         with tempfile.TemporaryDirectory() as tmp:
             env = make_environment(tmp)
             obs = env.step(actions.CourtListenerCitationLookup(cite="1 U.S. 1"))
     finally:
-        environment.execute_courtlistener_citation_lookup = original
-    assert obs is sentinel
+        environment.lookup_citation = original
+    assert obs.result["action_type"] == "COURTLISTENER_CITATION_LOOKUP"
+    assert obs.result["citations"] == ["1 U.S. 1"], obs.result
+    assert obs.metadata == {"action_type": "COURTLISTENER_CITATION_LOOKUP", "cite": "1 U.S. 1"}
 
 
 @check
@@ -181,16 +176,30 @@ def scratchpad_dispatch():
 
 
 @check
-def courtlistener_client_builds_observations():
-    """The relocated client still builds Observations (lazy import of the environment)."""
+def courtlistener_errors_become_observations():
+    """Client errors raise; the environment turns them into error observations for the agent."""
     original = courtlistener.make_courtlistener_request
-    courtlistener.make_courtlistener_request = lambda endpoint, params: {"error": "offline"}
+
+    def offline(endpoint, params):
+        raise courtlistener.NonRetryableError("400 - bad query")
+
+    courtlistener.make_courtlistener_request = offline
     try:
-        obs = courtlistener.execute_courtlistener_search("query")
-        assert isinstance(obs, Observation)
-        assert obs.result.get("error") or obs.metadata.get("error")
+        with tempfile.TemporaryDirectory() as tmp:
+            env = make_environment(tmp)
+            obs = env.step(actions.OpenCourtListenerSearch(query="bad query"))
+            assert obs.metadata["non_retryable"] is True, obs.metadata
+            assert "Please fix the query" in obs.result, obs.result
+            obs = env.step(actions.AccessCourtListenerOpinion(opinion_id="1"))
+            assert "bad query" in obs.metadata["error"], obs.metadata
     finally:
         courtlistener.make_courtlistener_request = original
+    try:
+        courtlistener.search_courtlistener("query", search_type="not-a-type")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Unsupported search types must be rejected")
 
 
 @check
