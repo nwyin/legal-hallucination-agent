@@ -8,7 +8,7 @@ results and errors into observations. `NonRetryableError` marks client errors
 import logging
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -148,7 +148,9 @@ def _sleep_until_iso(iso_timestamp: str) -> None:
         until = date_parser.isoparse(iso_timestamp)
     except Exception:
         return
-    now = datetime.now(until.tzinfo) if until.tzinfo else datetime.utcnow()
+    if until.tzinfo is None:
+        until = until.replace(tzinfo=UTC)
+    now = datetime.now(UTC)
     delta = (until - now).total_seconds()
     if delta > 0:
         time.sleep(min(delta, 60))

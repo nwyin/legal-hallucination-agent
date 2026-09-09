@@ -17,7 +17,7 @@ import random
 import re
 import string
 import time
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import requests
@@ -235,9 +235,11 @@ def _filter_by_cutoff_date(
                 kept.append(result)
             continue
         if cutoff_date:
-            tz = result.published_date.tzinfo or datetime.now().astimezone().tzinfo
-            if result.published_date >= datetime.combine(
-                cutoff_date, datetime.min.time(), tzinfo=tz
+            published = result.published_date
+            if published.tzinfo is None:
+                published = published.replace(tzinfo=UTC)
+            if published >= datetime.combine(
+                cutoff_date, datetime.min.time(), tzinfo=published.tzinfo
             ):
                 continue
         kept.append(result)

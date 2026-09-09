@@ -4,7 +4,7 @@ import json
 import logging
 import os
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -88,7 +88,7 @@ class MetricsCollector:
             model_id=model_id,
             agent_type=agent_type,
             environment_info=environment_info or {},
-            start_time=datetime.now().isoformat(),
+            start_time=datetime.now(UTC).isoformat(),
             step_metrics=[],
         )
         # Store method separately for directory structure
@@ -161,7 +161,7 @@ class MetricsCollector:
             return ""
 
         # Finalize episode
-        self.current_episode.end_time = datetime.now().isoformat()
+        self.current_episode.end_time = datetime.now(UTC).isoformat()
         self.current_episode.total_steps = self.step_count
         self.current_episode.final_outcome = final_outcome
 

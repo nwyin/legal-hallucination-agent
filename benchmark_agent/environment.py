@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_timestamp() -> str:
-    return datetime.datetime.now().isoformat()
+    return datetime.datetime.now(datetime.UTC).isoformat()
 
 
 class Observation:

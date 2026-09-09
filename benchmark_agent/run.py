@@ -12,7 +12,7 @@ import logging
 import os
 import random
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -112,7 +112,7 @@ def setup_experiment_logging(
     log_dir = os.path.join(experiments_dir, dataset, model_id, method)
     os.makedirs(log_dir, exist_ok=True)
     log_filepath = os.path.join(
-        log_dir, f"{example_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        log_dir, f"{example_id}_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.log"
     )
     file_handler = logging.FileHandler(log_filepath)
     file_handler.setLevel(logging.INFO)

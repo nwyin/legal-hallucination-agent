@@ -511,6 +511,50 @@ def scoring_helpers():
     assert empty["f1"] == 0.0, empty
 
 
+@check
+def timezone_boundaries():
+    from datetime import UTC, date, datetime, timedelta
+
+    cutoff = date(2025, 1, 2)
+    for offset in ("", "+00:00", "+09:00", "-08:00"):
+        before = SimpleNamespace(
+            published_date=datetime.fromisoformat(f"2025-01-01T23:59:59{offset}")
+        )
+        at = SimpleNamespace(
+            published_date=datetime.fromisoformat(f"2025-01-02T00:00:00{offset}")
+        )
+        undated = SimpleNamespace(published_date=None)
+        assert web_search._filter_by_cutoff_date([before, at, undated], cutoff) == [
+            before
+        ]
+        assert web_search._filter_by_cutoff_date(
+            [before, at, undated], cutoff, False
+        ) == [before, undated]
+
+    now = datetime(2025, 1, 1, tzinfo=UTC)
+    with (
+        patch.object(courtlistener, "datetime") as clock,
+        patch.object(courtlistener.time, "sleep") as sleep,
+    ):
+        clock.now.return_value = now
+        for deadline in (
+            "2025-01-01T00:00:30",
+            "2025-01-01T00:00:30Z",
+            "2025-01-01T09:00:30+09:00",
+        ):
+            courtlistener._sleep_until_iso(deadline)
+            sleep.assert_called_with(30)
+        courtlistener._sleep_until_iso((now + timedelta(minutes=5)).isoformat())
+        sleep.assert_called_with(60)
+        sleep.reset_mock()
+        courtlistener._sleep_until_iso("2024-12-31T23:59:00Z")
+        courtlistener._sleep_until_iso("invalid")
+        sleep.assert_not_called()
+    assert datetime.fromisoformat(environment.get_timestamp()).utcoffset() == timedelta(
+        0
+    )
+
+
 def main():
     failures = 0
     for fn in CHECKS:
