@@ -29,9 +29,7 @@ class ModelAPI:
             metadata={"provider": "openrouter"},
         )
         try:
-            response = get_client().chat.completions.create(
-                messages=prompt, model=model_id, **kwargs
-            )
+            response = get_client().chat.completions.create(messages=prompt, model=model_id, **kwargs)
             langfuse.update_current_span(
                 output=response.model_dump(mode="json")
                 if hasattr(response, "model_dump")

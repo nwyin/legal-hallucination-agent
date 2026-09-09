@@ -79,9 +79,7 @@ def _parse_relative_date(date_str: str) -> datetime | None:
 
 def _parse_serpapi_news_format(date_str: str) -> datetime | None:
     """Parse SerpAPI news format: "07/22/2025, 06:39 PM, +0000 UTC"."""
-    match = re.match(
-        r"(\d{2}/\d{2}/\d{4}),\s+(\d{1,2}:\d{2}\s+[AP]M),\s+([+-]\d{4})\s+UTC", date_str
-    )
+    match = re.match(r"(\d{2}/\d{2}/\d{4}),\s+(\d{1,2}:\d{2}\s+[AP]M),\s+([+-]\d{4})\s+UTC", date_str)
     if not match:
         return None
     date_part, time_part, tz_offset = match.groups()
@@ -99,9 +97,7 @@ class SerpApiClient:
 
     BASE_URL = "https://serpapi.com/search"
 
-    def __init__(
-        self, api_key: str | None = None, max_retries: int = 3, base_delay: float = 1.0
-    ):
+    def __init__(self, api_key: str | None = None, max_retries: int = 3, base_delay: float = 1.0):
         self.api_key = api_key or os.getenv("SERPAPI_API_KEY")
         if not self.api_key:
             raise ValueError(
@@ -123,37 +119,27 @@ class SerpApiClient:
         params = {"q": query, "engine": engine, "api_key": self.api_key, **kwargs}
         return self._make_request_with_retry(self.base_url, params)
 
-    def _make_request_with_retry(
-        self, url: str, params: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _make_request_with_retry(self, url: str, params: dict[str, Any]) -> dict[str, Any]:
         """GET with retries on 429 and connection errors; other HTTP errors raise immediately."""
         for attempt in range(self.max_retries + 1):
             try:
-                with capture_http(
-                    "request-serpapi", "GET", url, params=params
-                ) as capture:
+                with capture_http("request-serpapi", "GET", url, params=params) as capture:
                     response = requests.get(url, params=params)
                     capture(response)
                 response.raise_for_status()
                 return response.json()
             except requests.HTTPError as e:
                 if response.status_code != 429:
-                    logger.error(
-                        f"SerpApi request failed with status {response.status_code}: {e}"
-                    )
+                    logger.error(f"SerpApi request failed with status {response.status_code}: {e}")
                     raise
                 error, reason = e, "rate limit hit"
             except requests.RequestException as e:
                 error, reason = e, f"connection error: {e}"
             if attempt == self.max_retries:
-                logger.error(
-                    f"SerpApi request failed after {self.max_retries + 1} attempts ({reason})"
-                )
+                logger.error(f"SerpApi request failed after {self.max_retries + 1} attempts ({reason})")
                 raise error
             delay = self.base_delay * (2**attempt) + random.uniform(0, 1)
-            logger.warning(
-                f"SerpApi {reason} (attempt {attempt + 1}/{self.max_retries + 1}). Retrying in {delay:.2f}s"
-            )
+            logger.warning(f"SerpApi {reason} (attempt {attempt + 1}/{self.max_retries + 1}). Retrying in {delay:.2f}s")
             time.sleep(delay)
 
     def google_search(
@@ -163,19 +149,13 @@ class SerpApiClient:
         cutoff_date: date | None = None,
         **kwargs,
     ) -> dict[str, Any]:
-        return self.search(
-            query, engine="google", num=num_results, cutoff_date=cutoff_date, **kwargs
-        )
+        return self.search(query, engine="google", num=num_results, cutoff_date=cutoff_date, **kwargs)
 
     def google_scholar_search(self, query: str, **kwargs) -> dict[str, Any]:
         return self.search(query, engine="google_scholar", **kwargs)
 
-    def news_search(
-        self, query: str, cutoff_date: date | None = None, **kwargs
-    ) -> dict[str, Any]:
-        return self.search(
-            query, engine="google_news", cutoff_date=cutoff_date, **kwargs
-        )
+    def news_search(self, query: str, cutoff_date: date | None = None, **kwargs) -> dict[str, Any]:
+        return self.search(query, engine="google_news", cutoff_date=cutoff_date, **kwargs)
 
 
 # --- Search results and search entry point ---
@@ -201,9 +181,7 @@ class SearchResult:
         self.published_date_raw = published_date  # Store original string
         self.published_date = parse_date_string(published_date)  # Parse to datetime
         self.metadata = metadata or {}
-        self.result_id = result_id or "".join(
-            random.choices(string.ascii_letters + string.digits, k=5)
-        )
+        self.result_id = result_id or "".join(random.choices(string.ascii_letters + string.digits, k=5))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -212,9 +190,7 @@ class SearchResult:
             "url": self.url,
             "snippet": self.snippet,
             "source": self.source,
-            "published_date": self.published_date.isoformat()
-            if self.published_date
-            else None,
+            "published_date": self.published_date.isoformat() if self.published_date else None,
             "published_date_raw": self.published_date_raw,
             "metadata": self.metadata,
         }
@@ -234,9 +210,7 @@ def _filter_by_cutoff_date(
             published = result.published_date
             if published.tzinfo is None:
                 published = published.replace(tzinfo=UTC)
-            if published >= datetime.combine(
-                cutoff_date, datetime.min.time(), tzinfo=published.tzinfo
-            ):
+            if published >= datetime.combine(cutoff_date, datetime.min.time(), tzinfo=published.tzinfo):
                 continue
         kept.append(result)
     return kept
@@ -256,9 +230,7 @@ def search(
     """
     client = SerpApiClient()
     if search_type == "web":
-        raw = client.google_search(
-            query, num_results=num_results, cutoff_date=cutoff_date, **kwargs
-        )
+        raw = client.google_search(query, num_results=num_results, cutoff_date=cutoff_date, **kwargs)
         results = [_web_result(r) for r in raw.get("organic_results", [])]
     elif search_type == "news":
         raw = client.news_search(query, cutoff_date=cutoff_date, **kwargs)
@@ -283,9 +255,7 @@ def _web_result(result: dict[str, Any]) -> SearchResult:
         url=result.get("link", ""),
         snippet=result.get("snippet", ""),
         source="google",
-        published_date=result.get("date")
-        or result.get("publication_date")
-        or result.get("published_at"),
+        published_date=result.get("date") or result.get("publication_date") or result.get("published_at"),
         metadata={
             "position": result.get("position"),
             "displayed_link": result.get("displayed_link"),
@@ -319,11 +289,7 @@ def _news_result(article: dict[str, Any]) -> SearchResult:
 def _scholar_result(article: dict[str, Any]) -> SearchResult:
     publication_info = article.get("publication_info", {})
     pdf_link = next(
-        (
-            r.get("link")
-            for r in article.get("resources", [])
-            if r.get("file_format") == "PDF"
-        ),
+        (r.get("link") for r in article.get("resources", []) if r.get("file_format") == "PDF"),
         None,
     )
     return SearchResult(
@@ -333,13 +299,9 @@ def _scholar_result(article: dict[str, Any]) -> SearchResult:
         source="google_scholar",
         published_date=None,
         metadata={
-            "authors": [
-                a.get("name", "Unknown") for a in publication_info.get("authors", [])
-            ],
+            "authors": [a.get("name", "Unknown") for a in publication_info.get("authors", [])],
             "pdf_link": pdf_link or "",
-            "cited_by": article.get("inline_links", {})
-            .get("cited_by", {})
-            .get("total", 0),
+            "cited_by": article.get("inline_links", {}).get("cited_by", {}).get("total", 0),
             "position": article.get("position", 0),
             "journal_venue": publication_info.get("summary", "N/A"),
         },

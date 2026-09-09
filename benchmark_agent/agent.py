@@ -94,16 +94,10 @@ class Agent:
         if not self.thinking_enabled and ActionType.THINK in self.action_space:
             self.action_space.remove(ActionType.THINK)
 
-        if (
-            not self.open_web_search_enabled
-            and ActionType.OPEN_WEB_SEARCH in self.action_space
-        ):
+        if not self.open_web_search_enabled and ActionType.OPEN_WEB_SEARCH in self.action_space:
             self.action_space.remove(ActionType.OPEN_WEB_SEARCH)
 
-        if (
-            not self.courtlistener_search_enabled
-            and ActionType.OPEN_COURTLISTENER_SEARCH in self.action_space
-        ):
+        if not self.courtlistener_search_enabled and ActionType.OPEN_COURTLISTENER_SEARCH in self.action_space:
             self.action_space.remove(ActionType.OPEN_COURTLISTENER_SEARCH)
 
         if (
@@ -133,21 +127,11 @@ class Agent:
         if self.thinking_enabled and ActionType.THINK not in env_action_space:
             errors.append("thinking_enabled=True but environment doesn't support THINK")
 
-        if (
-            self.open_web_search_enabled
-            and ActionType.OPEN_WEB_SEARCH not in env_action_space
-        ):
-            errors.append(
-                "open_web_search_enabled=True but environment doesn't support OPEN_WEB_SEARCH"
-            )
+        if self.open_web_search_enabled and ActionType.OPEN_WEB_SEARCH not in env_action_space:
+            errors.append("open_web_search_enabled=True but environment doesn't support OPEN_WEB_SEARCH")
 
-        if (
-            self.courtlistener_search_enabled
-            and ActionType.OPEN_COURTLISTENER_SEARCH not in env_action_space
-        ):
-            errors.append(
-                "courtlistener_search_enabled=True but environment doesn't support OPEN_COURTLISTENER_SEARCH"
-            )
+        if self.courtlistener_search_enabled and ActionType.OPEN_COURTLISTENER_SEARCH not in env_action_space:
+            errors.append("courtlistener_search_enabled=True but environment doesn't support OPEN_COURTLISTENER_SEARCH")
 
         if (
             self.courtlistener_opinion_access_enabled
@@ -313,22 +297,15 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
                 "No BOED prediction_prompt_constructor injected; "
                 "defaulting to BOEDPredictionPromptConstructor(domain_knowledge=None)."
             )
-        self.belief_update_prompt_constructor = (
-            belief_update_prompt_constructor or BOEDBeliefUpdatePromptConstructor()
-        )
+        self.belief_update_prompt_constructor = belief_update_prompt_constructor or BOEDBeliefUpdatePromptConstructor()
         self.action_selection_prompt_constructor = (
-            action_selection_prompt_constructor
-            or BOEDActionSelectionPromptConstructor()
+            action_selection_prompt_constructor or BOEDActionSelectionPromptConstructor()
         )
-        self.prediction_prompt_constructor = (
-            prediction_prompt_constructor or BOEDPredictionPromptConstructor()
-        )
+        self.prediction_prompt_constructor = prediction_prompt_constructor or BOEDPredictionPromptConstructor()
         self.max_tokens_config = max_tokens_config or {}
         self.belief_update_model_id = belief_update_model_id or self.model_id
         self.belief_update_temperature = (
-            self.temperature
-            if belief_update_temperature is None
-            else belief_update_temperature
+            self.temperature if belief_update_temperature is None else belief_update_temperature
         )
 
         # Track last action for belief updates
@@ -401,14 +378,10 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
         Returns:
             String representation of updated beliefs
         """
-        langfuse.update_current_span(
-            input=str(observation), metadata={"step": self.current_step}
-        )
+        langfuse.update_current_span(input=str(observation), metadata={"step": self.current_step})
         # Skip belief update for initial observation (no action taken yet)
         if not observation or not observation.metadata or action is None:
-            logger.info(
-                "Skipping belief update for initial observation (no action taken yet)"
-            )
+            logger.info("Skipping belief update for initial observation (no action taken yet)")
             return f"Task Beliefs: {self.task_beliefs}"
 
         if self.belief_update_prompt_constructor is None:
@@ -431,9 +404,7 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             {"role": "user", "content": user_prompt},
         ]
 
-        belief_update_max_tokens = self.max_tokens_config.get(
-            "belief_update", self.max_tokens
-        )
+        belief_update_max_tokens = self.max_tokens_config.get("belief_update", self.max_tokens)
         max_belief_update_attempts = 3
 
         def non_empty(response: str | None) -> str:
@@ -510,9 +481,7 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             self.task_beliefs = task_section
         else:
             if not text.strip():
-                logger.warning(
-                    "Empty belief update response from LLM, keeping previous beliefs"
-                )
+                logger.warning("Empty belief update response from LLM, keeping previous beliefs")
             else:
                 # Use full response as task beliefs
                 self.task_beliefs = text
@@ -531,9 +500,7 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
         Returns:
             The selected action
         """
-        langfuse.update_current_span(
-            input=str(observation), metadata={"step": self.current_step + 1}
-        )
+        langfuse.update_current_span(input=str(observation), metadata={"step": self.current_step + 1})
         logger.info(f"BOED action selection (attempting step {self.current_step + 1})")
 
         # Step 1: Update beliefs based on current observation
@@ -544,17 +511,13 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
         is_final_step = (self.current_step + 1) >= self.environment.max_steps
 
         if is_final_step:
-            logger.info(
-                "Final step reached - using prediction prompt to force PROVIDE_FINAL_RESPONSE"
-            )
+            logger.info("Final step reached - using prediction prompt to force PROVIDE_FINAL_RESPONSE")
             max_prediction_retries = 3
             prediction, _confidence = None, None
             for attempt in range(max_prediction_retries):
                 prediction, _confidence = self.get_current_prediction()
                 is_valid = prediction is not None and (
-                    (
-                        prediction if isinstance(prediction, str) else str(prediction)
-                    ).strip()
+                    (prediction if isinstance(prediction, str) else str(prediction)).strip()
                     and not (isinstance(prediction, list) and len(prediction) == 0)
                 )
                 if is_valid:
@@ -580,9 +543,7 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             # Increment step counter after successful parsing
             self.current_step += 1
             self.last_action = action
-            logger.info(
-                f"Selected action: {action.action_type.value} (step {self.current_step})"
-            )
+            logger.info(f"Selected action: {action.action_type.value} (step {self.current_step})")
             langfuse.update_current_span(
                 output={
                     "action_type": action.action_type.value,
@@ -590,15 +551,11 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
                 }
             )
         else:
-            langfuse.update_current_span(
-                level="ERROR", status_message="Action selection returned no action"
-            )
+            langfuse.update_current_span(level="ERROR", status_message="Action selection returned no action")
 
         return action
 
-    def _build_action_selection_prompts(
-        self, observation: Observation | None
-    ) -> list[dict[str, str]] | None:
+    def _build_action_selection_prompts(self, observation: Observation | None) -> list[dict[str, str]] | None:
         """
         Build prompts for action selection.
 
@@ -633,9 +590,7 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             {"role": "user", "content": user_prompt},
         ]
 
-    def _call_llm_for_action_selection(
-        self, messages: list[dict[str, str]]
-    ) -> Action | None:
+    def _call_llm_for_action_selection(self, messages: list[dict[str, str]]) -> Action | None:
         """
         Call the LLM for action selection and parse the response into an Action.
 
@@ -646,9 +601,7 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             Parsed Action object, or None if every attempt fails
         """
         logger.info("Calling LLM for BOED action selection")
-        action_selection_max_tokens = self.max_tokens_config.get(
-            "action_selection", self.max_tokens
-        )
+        action_selection_max_tokens = self.max_tokens_config.get("action_selection", self.max_tokens)
 
         def parse_action(response: str | None) -> Action:
             action_type, parameters = parse_action_response(response)
@@ -661,9 +614,7 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
                 self.store_final_response(parameters.get("response"))
             else:
                 self.last_final_response_list = None
-            parameters = normalize_action_parameters_for_construction(
-                action_type, parameters
-            )
+            parameters = normalize_action_parameters_for_construction(action_type, parameters)
             return get_action_class(ActionType(action_type))(**parameters)
 
         def reask(error: Exception, response: str | None) -> str:
@@ -687,9 +638,7 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
                 seed=self.seed,
             )
         except REASK_ERRORS as e:
-            logger.error(
-                f"Action parsing failed after {self.MAX_ACTION_REASKS + 1} attempts: {e}"
-            )
+            logger.error(f"Action parsing failed after {self.MAX_ACTION_REASKS + 1} attempts: {e}")
             return None
 
     def store_final_response(self, response: Any) -> None:
@@ -716,9 +665,7 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
                 "task_beliefs": self.task_beliefs,
             }
         )
-        logger.info(
-            f"Updated state - Step {self.current_step}: {action.action_type.value}"
-        )
+        logger.info(f"Updated state - Step {self.current_step}: {action.action_type.value}")
 
     def get_current_beliefs(self) -> dict[str, str]:
         return {
@@ -767,15 +714,11 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ]
-            langfuse.update_current_span(
-                input=prompt, metadata={"step": self.current_step}
-            )
+            langfuse.update_current_span(input=prompt, metadata={"step": self.current_step})
 
             # Get prediction from the agent's own model; re-ask once if the
             # response cannot be parsed.
-            prediction_max_tokens = self.max_tokens_config.get(
-                "prediction", self.max_tokens
-            )
+            prediction_max_tokens = self.max_tokens_config.get("prediction", self.max_tokens)
             try:
                 prediction, confidence = self._call_with_reask(
                     prompt,
@@ -804,9 +747,7 @@ class BayesianOptimalExperimentalDesignAgent(Agent):
             except ValueError:
                 logger.warning(f"Could not normalize prediction format: {prediction}")
 
-            logger.info(
-                f"Current prediction: {prediction} (confidence: {confidence:.3f})"
-            )
+            logger.info(f"Current prediction: {prediction} (confidence: {confidence:.3f})")
             return prediction, confidence
 
         except Exception as e:
@@ -856,18 +797,11 @@ class BOEDCitationTrackerAgent(BayesianOptimalExperimentalDesignAgent):
     ):
         # No domain knowledge; use prior that asks for list described in words
         no_domain = None
-        belief_constructor = (
-            belief_update_prompt_constructor
-            or BOEDCitationTrackerBeliefUpdatePromptConstructor(no_domain)
+        belief_constructor = belief_update_prompt_constructor or BOEDCitationTrackerBeliefUpdatePromptConstructor(
+            no_domain
         )
-        action_constructor = (
-            action_selection_prompt_constructor
-            or BOEDActionSelectionPromptConstructor(no_domain)
-        )
-        pred_constructor = (
-            prediction_prompt_constructor
-            or BOEDCitationTrackerPredictionPromptConstructor(no_domain)
-        )
+        action_constructor = action_selection_prompt_constructor or BOEDActionSelectionPromptConstructor(no_domain)
+        pred_constructor = prediction_prompt_constructor or BOEDCitationTrackerPredictionPromptConstructor(no_domain)
 
         super().__init__(
             environment=environment,
@@ -888,6 +822,4 @@ class BOEDCitationTrackerAgent(BayesianOptimalExperimentalDesignAgent):
             belief_update_model_id=belief_update_model_id,
             belief_update_temperature=belief_update_temperature,
         )
-        logger.info(
-            "Initialized BOEDCitationTrackerAgent (no domain knowledge; task list in words)"
-        )
+        logger.info("Initialized BOEDCitationTrackerAgent (no domain knowledge; task list in words)")

@@ -54,9 +54,7 @@ def redact(value):
         return [redact(v) for v in value]
     if isinstance(value, str):
         for key, secret in os.environ.items():
-            if secret and any(
-                p in key.upper() for p in ("API_KEY", "SECRET", "TOKEN", "PASSWORD")
-            ):
+            if secret and any(p in key.upper() for p in ("API_KEY", "SECRET", "TOKEN", "PASSWORD")):
                 value = value.replace(secret, "[REDACTED]")
     return value
 
@@ -108,10 +106,7 @@ class CheckedExporter(OTLPSpanExporter):
                 end_time=s.end_time,
                 instrumentation_scope=s.instrumentation_scope,
                 links=s.links,
-                events=[
-                    Event(e.name, redact(dict(e.attributes or {})), e.timestamp)
-                    for e in s.events
-                ],
+                events=[Event(e.name, redact(dict(e.attributes or {})), e.timestamp) for e in s.events],
                 status=Status(s.status.status_code, redact(s.status.description)),
             )
             for s in spans
@@ -126,9 +121,7 @@ class CheckedExporter(OTLPSpanExporter):
         return result
 
 
-enabled = bool(
-    os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY")
-) and (
+enabled = bool(os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY")) and (
     os.getenv("OTEL_SDK_DISABLED", "false").lower() != "true"
     and os.getenv("LANGFUSE_TRACING_ENABLED", "true").lower() != "false"
 )
@@ -156,15 +149,11 @@ langfuse = Langfuse(
 
 def require_capture():
     """Require working telemetry before model spending."""
-    missing = [
-        k for k in ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY") if not os.getenv(k)
-    ]
+    missing = [k for k in ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY") if not os.getenv(k)]
     if not base_url:
         missing.append("LANGFUSE_BASE_URL (or LANGFUSE_HOST)")
     if missing:
-        raise TelemetryError(
-            "Required Langfuse configuration missing: " + ", ".join(missing)
-        )
+        raise TelemetryError("Required Langfuse configuration missing: " + ", ".join(missing))
     if (
         not enabled
         or os.getenv("LANGFUSE_CAPTURE_CONTENT", "true").lower() != "true"
@@ -179,17 +168,13 @@ def require_capture():
         if not langfuse.auth_check():
             raise TelemetryError("Langfuse credential check failed")
     except Exception as exc:
-        raise TelemetryError(
-            "Langfuse authentication/connectivity check failed"
-        ) from exc
+        raise TelemetryError("Langfuse authentication/connectivity check failed") from exc
     check_capture()
 
 
 def check_capture():
     if capture_failures.failures:
-        raise TelemetryError(
-            "Langfuse capture/export failed: " + ", ".join(capture_failures.failures)
-        )
+        raise TelemetryError("Langfuse capture/export failed: " + ", ".join(capture_failures.failures))
 
 
 def flush_traces():
@@ -230,9 +215,7 @@ def provenance(config):
     def git(*args):
         return subprocess.check_output(["git", *args], cwd=root, text=True).strip()
 
-    files = sorted((root / "benchmark_agent").glob("*.py")) + sorted(
-        (root / "configs").glob("*.yaml")
-    )
+    files = sorted((root / "benchmark_agent").glob("*.py")) + sorted((root / "configs").glob("*.yaml"))
     files += [
         *sorted((root / "scripts").rglob("*.py")),
         root / "pyproject.toml",
@@ -244,10 +227,7 @@ def provenance(config):
             "provider": "openrouter",
             "code_revision": git("rev-parse", "HEAD"),
             "code_dirty": bool(git("status", "--porcelain")),
-            "source_sha256": {
-                str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
-                for p in files
-            },
+            "source_sha256": {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in files},
             "python": sys.version,
             "dependencies": {d.metadata["Name"]: d.version for d in distributions()},
         }
@@ -261,20 +241,14 @@ def experiment(config):
     metadata["run_id"] = str(uuid4())
     dataset_path = config.get("data", {}).get("dataset_path")
     if dataset_path and Path(dataset_path).is_file():
-        metadata["dataset_revision"] = hashlib.sha256(
-            Path(dataset_path).read_bytes()
-        ).hexdigest()
+        metadata["dataset_revision"] = hashlib.sha256(Path(dataset_path).read_bytes()).hexdigest()
     token = run_context.set(metadata)
     try:
         with (
             export_lifecycle(),
-            propagate_attributes(
-                session_id=metadata["run_id"], metadata={"run_id": metadata["run_id"]}
-            ),
+            propagate_attributes(session_id=metadata["run_id"], metadata={"run_id": metadata["run_id"]}),
         ):
-            logging.getLogger(__name__).info(
-                "Langfuse run/session: %s", metadata["run_id"]
-            )
+            logging.getLogger(__name__).info("Langfuse run/session: %s", metadata["run_id"])
             yield metadata
     finally:
         run_context.reset(token)
@@ -311,11 +285,7 @@ def episode_capture(fn):
                         extract_ground_truth,
                     )
 
-                    metrics = compute_metrics(
-                        *evaluate_entry(
-                            extract_ground_truth(bound.arguments["example"]), None
-                        )
-                    )
+                    metrics = compute_metrics(*evaluate_entry(extract_ground_truth(bound.arguments["example"]), None))
                     score_metrics(
                         {**metrics, "error_count": 1},
                         episode_trace.get(),
@@ -356,9 +326,7 @@ def score_metrics(metrics, trace_id, example_id=None):
                 value=float(value),
                 data_type="NUMERIC",
                 trace_id=trace_id,
-                metadata=redact(
-                    {"run_id": run_context.get()["run_id"], "example_id": example_id}
-                ),
+                metadata=redact({"run_id": run_context.get()["run_id"], "example_id": example_id}),
             )
     check_capture()
 
@@ -378,20 +346,14 @@ def publish_aggregate(results):
         ]
     )
     metrics["example_count"] = len(results)
-    metrics["error_count"] = sum(
-        bool(r.get("error")) or r.get("final_response") is None for r in results
-    )
+    metrics["error_count"] = sum(bool(r.get("error")) or r.get("final_response") is None for r in results)
     with langfuse.start_as_current_observation(
         name="experiment-summary",
         input=[r["example_id"] for r in results],
         metadata=run_context.get(),
         output=metrics,
     ) as span:
-        span.update(
-            metadata={
-                "episode_trace_ids": [r.get("langfuse_trace_id") for r in results]
-            }
-        )
+        span.update(metadata={"episode_trace_ids": [r.get("langfuse_trace_id") for r in results]})
         score_metrics(metrics, langfuse.get_current_trace_id())
     return metrics
 

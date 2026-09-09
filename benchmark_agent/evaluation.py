@@ -124,17 +124,9 @@ def _normalize_ground_truth(list_hallucinations: Any) -> list[tuple[str, str | N
     if not list_hallucinations:
         return []
     if isinstance(list_hallucinations, dict):
-        return [
-            (str(k).strip(), (str(v).strip() if v else None))
-            for k, v in list_hallucinations.items()
-            if k
-        ]
+        return [(str(k).strip(), (str(v).strip() if v else None)) for k, v in list_hallucinations.items() if k]
     if isinstance(list_hallucinations, list):
-        return [
-            (str(x).strip(), None)
-            for x in list_hallucinations
-            if x is not None and str(x).strip()
-        ]
+        return [(str(x).strip(), None) for x in list_hallucinations if x is not None and str(x).strip()]
     return []
 
 
@@ -171,29 +163,17 @@ def evaluate_entry(
     """
     predictions = parse_predictions(predicted_hallucinations)
     gt_pairs = _normalize_ground_truth(ground_truth)
-    types_lower = (
-        {t.strip().lower() for t in type_filter if t} if type_filter else set()
-    )
+    types_lower = {t.strip().lower() for t in type_filter if t} if type_filter else set()
     if type_filter and types_lower:
-        included_pairs = [
-            (span, t)
-            for span, t in gt_pairs
-            if span and (t is None or (t and t.lower() in types_lower))
-        ]
+        included_pairs = [(span, t) for span, t in gt_pairs if span and (t is None or (t and t.lower() in types_lower))]
         excluded_pairs = [
-            (span, t)
-            for span, t in gt_pairs
-            if span and (t is not None and t and t.lower() not in types_lower)
+            (span, t) for span, t in gt_pairs if span and (t is not None and t and t.lower() not in types_lower)
         ]
     else:
         included_pairs = gt_pairs
         excluded_pairs = []
     gt_spans = list(dict.fromkeys(span for span, _ in included_pairs))
-    excluded_gt_spans = (
-        list(dict.fromkeys(span for span, _ in excluded_pairs))
-        if excluded_pairs
-        else []
-    )
+    excluded_gt_spans = list(dict.fromkeys(span for span, _ in excluded_pairs)) if excluded_pairs else []
 
     ground_truth_found = 0
     for g in gt_spans:
@@ -228,14 +208,8 @@ def compute_metrics(
 ) -> dict[str, float]:
     """Compute precision, recall, and F1 from counts."""
     recall = ground_truth_found / total_ground_truth if total_ground_truth > 0 else 0.0
-    precision = (
-        correct_predictions / total_predictions if total_predictions > 0 else 0.0
-    )
-    f1 = (
-        2 * precision * recall / (precision + recall)
-        if (precision + recall) > 0
-        else 0.0
-    )
+    precision = correct_predictions / total_predictions if total_predictions > 0 else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
     return {
         "precision": precision,
         "recall": recall,
@@ -263,9 +237,7 @@ def evaluate_hallucination_entry(
     """
     ground_truth = extract_ground_truth(entry)
     predicted = entry.get("predicted_hallucinations")
-    gt_found, gt_total, correct_pred, pred_total = evaluate_entry(
-        ground_truth, predicted, type_filter=type_filter
-    )
+    gt_found, gt_total, correct_pred, pred_total = evaluate_entry(ground_truth, predicted, type_filter=type_filter)
     return compute_metrics(gt_found, gt_total, correct_pred, pred_total)
 
 

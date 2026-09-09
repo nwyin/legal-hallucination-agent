@@ -12,9 +12,7 @@ def restrict_actions(env, allowed):
     """Advertise only allowed actions and reject others before dispatch."""
     allowed = frozenset(allowed)
     env.action_space = [action for action in env.action_space if action in allowed]
-    env.initial_observation.metadata["available_actions"] = [
-        action.value for action in env.action_space
-    ]
+    env.initial_observation.metadata["available_actions"] = [action.value for action in env.action_space]
     original_step = env.step
 
     def step(action):

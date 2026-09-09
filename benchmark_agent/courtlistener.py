@@ -29,9 +29,7 @@ class NonRetryableError(Exception):
 
 # Cache lives under the repo's .cache/ (gitignored) rather than the current
 # working directory, so it lands in the same place no matter where a run starts.
-CACHE_PATH = (
-    Path(__file__).resolve().parents[1] / ".cache" / "courtlistener_cache.sqlite"
-)
+CACHE_PATH = Path(__file__).resolve().parents[1] / ".cache" / "courtlistener_cache.sqlite"
 
 requests = requests_cache.CachedSession(
     str(CACHE_PATH),
@@ -70,13 +68,9 @@ def make_courtlistener_request(endpoint: str, params: dict[str, Any]) -> dict[st
         response = requests.get(url, params=params, headers=headers)
         capture(response)
     if not response.ok:
-        logger.error(
-            f"CourtListener V4 API request failed: {response.status_code} - {response.text}"
-        )
+        logger.error(f"CourtListener V4 API request failed: {response.status_code} - {response.text}")
         if response.status_code in NON_RETRYABLE_STATUSES:
-            raise NonRetryableError(
-                f"Semantic error: {response.status_code} - {response.text}"
-            )
+            raise NonRetryableError(f"Semantic error: {response.status_code} - {response.text}")
         response.raise_for_status()  # 5xx: let backoff retry
     return response.json()
 
@@ -86,9 +80,7 @@ def fetch_opinion(opinion_id: str) -> dict[str, Any]:
     return make_courtlistener_request(f"opinions/{opinion_id}/", {})
 
 
-def search_courtlistener(
-    query: str, search_type: str = "opinions", max_snippets: int = 5, **kwargs
-) -> dict[str, Any]:
+def search_courtlistener(query: str, search_type: str = "opinions", max_snippets: int = 5, **kwargs) -> dict[str, Any]:
     """Search CourtListener and return a summary of the top results.
 
     Returns {"count", "results": [...], "total_results", "snippets_shown", "search_type",
@@ -97,9 +89,7 @@ def search_courtlistener(
     if not query:
         raise ValueError("Query parameter is required for CourtListener search")
     if search_type not in SEARCH_TYPES:
-        raise ValueError(
-            f"Unsupported search type: {search_type}. Supported types: {list(SEARCH_TYPES.keys())}"
-        )
+        raise ValueError(f"Unsupported search type: {search_type}. Supported types: {list(SEARCH_TYPES.keys())}")
     params = {
         "q": query,
         "type": SEARCH_TYPES[search_type],
@@ -113,9 +103,7 @@ def search_courtlistener(
     results = []
     for i, hit in enumerate(hits[:max_snippets]):
         # Opinion clusters may only carry the snippet on the nested opinion.
-        snippet = hit.get("snippet") or (hit.get("opinions") or [{}])[0].get(
-            "snippet", ""
-        )
+        snippet = hit.get("snippet") or (hit.get("opinions") or [{}])[0].get("snippet", "")
         results.append(
             {
                 "id": hit.get("cluster_id") or hit.get("docket_id") or hit.get("id"),
@@ -166,9 +154,7 @@ def lookup_citation(cite: str, max_attempts: int = 3) -> list[dict[str, Any]]:
     for attempt in range(max_attempts):
         try:
             time.sleep(RATE_LIMIT_DELAY)
-            with capture_http(
-                "lookup-citation", "POST", CITATION_LOOKUP_URL, json={"text": cite}
-            ) as capture:
+            with capture_http("lookup-citation", "POST", CITATION_LOOKUP_URL, json={"text": cite}) as capture:
                 resp = requests.post(
                     CITATION_LOOKUP_URL,
                     headers=headers,
@@ -187,10 +173,7 @@ def lookup_citation(cite: str, max_attempts: int = 3) -> list[dict[str, Any]]:
             raw = resp.json()
             return raw if isinstance(raw, list) else []
         except requests_original.exceptions.HTTPError as e:
-            if (
-                e.response is not None
-                and e.response.status_code in NON_RETRYABLE_STATUSES
-            ):
+            if e.response is not None and e.response.status_code in NON_RETRYABLE_STATUSES:
                 raise NonRetryableError(str(e)) from e
             if attempt == max_attempts - 1:
                 raise

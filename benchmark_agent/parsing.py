@@ -21,9 +21,7 @@ logger = logging.getLogger(__name__)
 # --- JSON and prediction response helpers ---
 
 
-def parse_json_from_text(
-    text: str, response_name: str = "response"
-) -> dict[str, Any] | None:
+def parse_json_from_text(text: str, response_name: str = "response") -> dict[str, Any] | None:
     """Decode the first object, preferring one inside a ```json fence.
 
     Returns None if there is no object opener. Malformed or incomplete JSON at
@@ -40,9 +38,7 @@ def parse_json_from_text(
         raise ValueError(f"Invalid JSON in {response_name} response: {e}") from e
 
 
-def parse_json_response(
-    response: str, response_name: str = "response"
-) -> dict[str, Any]:
+def parse_json_response(response: str, response_name: str = "response") -> dict[str, Any]:
     """Parse a JSON response; raises ValueError if empty or no valid JSON object is present."""
     if not response or not response.strip():
         raise ValueError(f"Empty {response_name} response from model")
@@ -61,9 +57,7 @@ def parse_prediction_response(response: str) -> tuple[str, float]:
     data = parse_json_response(response, "prediction")
     raw_prediction = data.get("action", {}).get("response", "")
     if isinstance(raw_prediction, list):
-        prediction = json.dumps(
-            raw_prediction
-        )  # Preserve as JSON string for downstream parsing
+        prediction = json.dumps(raw_prediction)  # Preserve as JSON string for downstream parsing
     else:
         prediction = str(raw_prediction).strip() if raw_prediction else ""
     confidence = float(data.get("confidence", 0.0))
@@ -97,18 +91,14 @@ def _non_empty(field_name: str, example: str):
     @classmethod
     def validate(cls, v: str) -> str:
         if not (v and str(v).strip()):
-            raise ValueError(
-                f"{field_name} must be a non-empty string (e.g. {example})"
-            )
+            raise ValueError(f"{field_name} must be a non-empty string (e.g. {example})")
         return str(v).strip()
 
     return validate
 
 
 class ProvideFinalResponseAction(BaseModel):
-    action_type: Literal[ActionType.PROVIDE_FINAL_RESPONSE.value] = Field(
-        ..., description="The type of action"
-    )
+    action_type: Literal[ActionType.PROVIDE_FINAL_RESPONSE.value] = Field(..., description="The type of action")
     response: str | list[str] = Field(
         ...,
         description="The final response: a string, or a list of hallucinated citations/sentences",
@@ -116,9 +106,7 @@ class ProvideFinalResponseAction(BaseModel):
 
 
 class ThinkAction(BaseModel):
-    action_type: Literal[ActionType.THINK.value] = Field(
-        ..., description="The type of action"
-    )
+    action_type: Literal[ActionType.THINK.value] = Field(..., description="The type of action")
     thought: str = Field(
         ...,
         description="Your reasoning, analysis, or thought process about the current situation",
@@ -126,9 +114,7 @@ class ThinkAction(BaseModel):
 
 
 class OpenWebSearchAction(BaseModel):
-    action_type: Literal[ActionType.OPEN_WEB_SEARCH.value] = Field(
-        ..., description="The type of action"
-    )
+    action_type: Literal[ActionType.OPEN_WEB_SEARCH.value] = Field(..., description="The type of action")
     query: str = Field(
         ...,
         description="The search query to find relevant web information (must be non-empty, e.g. a citation or search phrase)",
@@ -137,9 +123,7 @@ class OpenWebSearchAction(BaseModel):
         None,
         description="The type of search to perform. Options: 'web', 'news', 'google_scholar' (default: 'web')",
     )
-    num_results: int | None = Field(
-        None, description="Number of results to return (default: 10)"
-    )
+    num_results: int | None = Field(None, description="Number of results to return (default: 10)")
     news_source: str | None = Field(
         None,
         description="News source to use for news searches. Options: 'serpapi', 'mediastack' (default: 'serpapi')",
@@ -157,9 +141,7 @@ class OpenWebSearchAction(BaseModel):
 
 
 class OpenCourtListenerSearchAction(BaseModel):
-    action_type: Literal[ActionType.OPEN_COURTLISTENER_SEARCH.value] = Field(
-        ..., description="The type of action"
-    )
+    action_type: Literal[ActionType.OPEN_COURTLISTENER_SEARCH.value] = Field(..., description="The type of action")
     query: str = Field(
         ...,
         description="The search query to find relevant legal cases and documents (must be non-empty, e.g. a citation like '965 F.2d 962' or a case name)",
@@ -177,15 +159,11 @@ class OpenCourtListenerSearchAction(BaseModel):
         description="Date filter with 'field' and 'before'/'after' keys (e.g., {'field': 'date_filed', 'before': '2022-01-01', 'after': '2021-01-01'}). Dates in YYYY-MM-DD format. Only 'date_filed' field is supported.",
     )
 
-    query_non_empty = _non_empty(
-        "query", "a citation like '965 F.2d 962' or a case name"
-    )
+    query_non_empty = _non_empty("query", "a citation like '965 F.2d 962' or a case name")
 
 
 class CourtListenerCitationLookupAction(BaseModel):
-    action_type: Literal[ActionType.COURTLISTENER_CITATION_LOOKUP.value] = Field(
-        ..., description="The type of action"
-    )
+    action_type: Literal[ActionType.COURTLISTENER_CITATION_LOOKUP.value] = Field(..., description="The type of action")
     cite: str = Field(
         ...,
         description="The reporter citation to look up (e.g. '934 F.3d 53', '143 S. Ct. 1196')",
@@ -195,9 +173,7 @@ class CourtListenerCitationLookupAction(BaseModel):
 
 
 class AccessCourtListenerOpinionAction(BaseModel):
-    action_type: Literal[ActionType.ACCESS_COURTLISTENER_OPINION.value] = Field(
-        ..., description="The type of action"
-    )
+    action_type: Literal[ActionType.ACCESS_COURTLISTENER_OPINION.value] = Field(..., description="The type of action")
     opinion_id: str = Field(
         ...,
         description="The CourtListener opinion ID (obtained from OPEN_COURTLISTENER_SEARCH results)",
@@ -205,22 +181,16 @@ class AccessCourtListenerOpinionAction(BaseModel):
 
 
 class SearchLocalOpinionAction(BaseModel):
-    action_type: Literal[ActionType.SEARCH_LOCAL_OPINION.value] = Field(
-        ..., description="The type of action"
-    )
+    action_type: Literal[ActionType.SEARCH_LOCAL_OPINION.value] = Field(..., description="The type of action")
     opinion_id: str = Field(
         ...,
         description="The CourtListener opinion ID (from a previous ACCESS_COURTLISTENER_OPINION call)",
     )
-    search_string: str = Field(
-        ..., description="The string to search for in the opinion text"
-    )
+    search_string: str = Field(..., description="The string to search for in the opinion text")
 
 
 class ReadDocumentAction(BaseModel):
-    action_type: Literal[ActionType.READ_DOCUMENT.value] = Field(
-        ..., description="The type of action"
-    )
+    action_type: Literal[ActionType.READ_DOCUMENT.value] = Field(..., description="The type of action")
     opinion_id: str = Field(
         ...,
         description="The opinion to read: use opinion_<id> (e.g. opinion_9001448) or just the numeric id (e.g. 9001448) from a previous ACCESS_COURTLISTENER_OPINION.",
@@ -236,16 +206,12 @@ class ReadDocumentAction(BaseModel):
 
 
 class EditScratchpadAction(BaseModel):
-    action_type: Literal[ActionType.EDIT_SCRATCHPAD.value] = Field(
-        ..., description="The type of action"
-    )
+    action_type: Literal[ActionType.EDIT_SCRATCHPAD.value] = Field(..., description="The type of action")
     operation: str = Field(
         ...,
         description="The operation to perform on the scratchpad. Options: 'append', 'insert', 'replace', 'clear'",
     )
-    content: str = Field(
-        ..., description="The content to add, insert, or replace in the scratchpad"
-    )
+    content: str = Field(..., description="The content to add, insert, or replace in the scratchpad")
     position: int | None = Field(
         None,
         description="The position for insert/replace operations (0-indexed). Required for 'insert' and 'replace' operations. Ignored for 'append' and 'clear' operations. Optional.",
@@ -283,9 +249,7 @@ def parse_action_response(response: str) -> tuple[str, dict[str, Any]]:
     return parameters.pop("action_type"), parameters
 
 
-def normalize_action_parameters_for_construction(
-    action_type: str, parameters: dict[str, Any]
-) -> dict[str, Any]:
+def normalize_action_parameters_for_construction(action_type: str, parameters: dict[str, Any]) -> dict[str, Any]:
     """
     Normalize parameters so they match Action class constructors.
     E.g. ProvideFinalResponse expects response: str; we accept list from the model and store as JSON array string.
@@ -323,10 +287,6 @@ def normalize_action_parameters_for_construction(
             )
         params["cite"] = str(c).strip()
     # READ_DOCUMENT: accept opinion_id; allow legacy document_id for backward compatibility
-    if (
-        action_type == ActionType.READ_DOCUMENT.value
-        and "opinion_id" not in params
-        and "document_id" in params
-    ):
+    if action_type == ActionType.READ_DOCUMENT.value and "opinion_id" not in params and "document_id" in params:
         params["opinion_id"] = params.pop("document_id")
     return params

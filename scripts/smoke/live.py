@@ -15,9 +15,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default="google/gemini-2.5-flash-lite")
     parser.add_argument("--steps", type=int, choices=(0, 2), default=2)
-    parser.add_argument(
-        "--output", type=Path, default=ROOT / "outputs" / "smoke" / str(uuid4())
-    )
+    parser.add_argument("--output", type=Path, default=ROOT / "outputs" / "smoke" / str(uuid4()))
     args = parser.parse_args()
     from omegaconf import OmegaConf
 
@@ -30,9 +28,7 @@ def main():
     example = {
         "filename": "synthetic_smoke",
         "text": "Synthetic software test, not a real brief. The following citation is explicitly invented: Imaginary Plaintiff v. Fictional Defendant, 999999 U.S. 999999 (2099). It supposedly holds that all contracts must be written on the moon. When using actions, first THINK about the invented citation before submitting the final response.",
-        "list_hallucinations": [
-            "Imaginary Plaintiff v. Fictional Defendant, 999999 U.S. 999999 (2099)"
-        ],
+        "list_hallucinations": ["Imaginary Plaintiff v. Fictional Defendant, 999999 U.S. 999999 (2099)"],
     }
     data = output / "synthetic.jsonl"
     data.write_text(json.dumps(example) + "\n")
@@ -47,9 +43,7 @@ def main():
     cfg.agent.model.model_id = args.model
     cfg.agent.model.temperature = 0
     cfg.agent.model.seed = 42
-    cfg.agent.max_tokens = {
-        k: 1024 for k in ("action_selection", "belief_update", "prediction")
-    }
+    cfg.agent.max_tokens = {k: 1024 for k in ("action_selection", "belief_update", "prediction")}
     cfg.agent.open_web_search_enabled = False
     cfg.agent.courtlistener_search_enabled = False
     cfg.agent.courtlistener_opinion_access_enabled = False
@@ -88,9 +82,7 @@ def main():
             run.main(cfg)
     finally:
         client.close()
-    batch = json.loads(
-        (output / "live-smoke/boed_citation_tracker/batch_results.json").read_text()
-    )
+    batch = json.loads((output / "live-smoke/boed_citation_tracker/batch_results.json").read_text())
     result = batch["results"][0]
     assert result.get("final_response") is not None, "No usable final prediction"
     assert result.get("langfuse_trace_id"), "Episode trace missing"

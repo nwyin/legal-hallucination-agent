@@ -31,9 +31,7 @@ class DocumentManager:
             return f"opinion_{document_id}"
         return None
 
-    def edit_scratchpad(
-        self, operation: str, content: str, position: int | None = None
-    ) -> bool:
+    def edit_scratchpad(self, operation: str, content: str, position: int | None = None) -> bool:
         """Apply append / insert / replace / clear; returns False on an invalid request."""
         if operation == "append":
             self.scratchpad.append(content)
@@ -59,9 +57,7 @@ class DocumentManager:
         return "\n".join(self.scratchpad)
 
 
-def read_document_content(
-    doc_content: str, start_line: int, num_lines: int
-) -> tuple[str, int, int, int]:
+def read_document_content(doc_content: str, start_line: int, num_lines: int) -> tuple[str, int, int, int]:
     """Return (text, start, end, total_lines) for the line window [start_line, start_line + num_lines)."""
     lines = doc_content.split("\n")
     start = max(0, start_line)

@@ -93,9 +93,7 @@ FINAL_RESPONSE_REASK = (
 def setup_logging(log_config: dict[str, Any]):
     logging.basicConfig(
         level=getattr(logging, log_config.get("level", "INFO")),
-        format=log_config.get(
-            "format", "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        ),
+        format=log_config.get("format", "%(asctime)s - %(name)s - %(levelname)s - %(message)s"),
     )
 
 
@@ -109,14 +107,10 @@ def setup_experiment_logging(
     """Add a file handler writing to {experiments_dir}/{dataset}/{model_id}/{method}/{example_id}_{timestamp}.log."""
     log_dir = Path(experiments_dir) / dataset / model_id / method
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_filepath = log_dir / (
-        f"{example_id}_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.log"
-    )
+    log_filepath = log_dir / (f"{example_id}_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.log")
     file_handler = logging.FileHandler(log_filepath)
     file_handler.setLevel(logging.INFO)
-    file_handler.setFormatter(
-        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    )
+    file_handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
     logging.getLogger().addHandler(file_handler)
     logger.info(f"Experiment log: {log_filepath}")
     return str(log_filepath)
@@ -134,9 +128,7 @@ def check_required_api_keys(agent_config: dict[str, Any]) -> bool:
         if os.getenv(key):
             logger.info(f"{key} found")
         elif key in required:
-            logger.error(
-                f"{key} is required but not found. Set: export {key}='your_key'"
-            )
+            logger.error(f"{key} is required but not found. Set: export {key}='your_key'")
             missing.append(key)
         else:
             logger.info(f"{key} not set")
@@ -151,12 +143,8 @@ def load_examples(dataset_path: str) -> list[dict[str, Any]]:
         return [json.loads(line) for line in f if line.strip()]
 
 
-def get_example_by_id(
-    examples: list[dict[str, Any]], example_id: str, id_field: str
-) -> dict[str, Any] | None:
-    return next(
-        (ex for ex in examples if str(ex.get(id_field)) == str(example_id)), None
-    )
+def get_example_by_id(examples: list[dict[str, Any]], example_id: str, id_field: str) -> dict[str, Any] | None:
+    return next((ex for ex in examples if str(ex.get(id_field)) == str(example_id)), None)
 
 
 def get_completed_examples(metrics_dir: str) -> set:
@@ -176,9 +164,7 @@ def method_key(method: str, max_steps: int) -> str:
     return f"{method}_steps{max_steps}"
 
 
-def episode_metrics_dir(
-    metrics_dir: str, dataset: str, model_id: str, method: str, max_steps: int
-) -> str:
+def episode_metrics_dir(metrics_dir: str, dataset: str, model_id: str, method: str, max_steps: int) -> str:
     return str(Path(metrics_dir) / dataset / model_id / method_key(method, max_steps))
 
 
@@ -192,9 +178,7 @@ def episode_opinion_cache_dir(
 ) -> str:
     """Per-episode opinion cache, so parallel runs never clear each other's opinions."""
     base = paths_config.get("opinion_cache_dir") or Path(output_dir) / "opinion_cache"
-    safe_example_id = "".join(
-        c if c.isalnum() or c in "-_" else "_" for c in str(example_id)
-    )
+    safe_example_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(example_id))
     return str(Path(base) / model_id / method_key(method, max_steps) / safe_example_id)
 
 
@@ -235,9 +219,7 @@ def create_agent(
 
     max_tokens_config = agent_config.get("max_tokens", {})
     if not isinstance(max_tokens_config, dict):
-        raise ValueError(
-            "agent.max_tokens must be a dictionary with keys: action_selection, belief_update, prediction"
-        )
+        raise ValueError("agent.max_tokens must be a dictionary with keys: action_selection, belief_update, prediction")
 
     params = {
         "environment": environment,
@@ -249,43 +231,29 @@ def create_agent(
         "seed": model_config.get("seed"),
         "thinking_enabled": agent_config.get("thinking_enabled", True),
         "open_web_search_enabled": agent_config.get("open_web_search_enabled", False),
-        "courtlistener_search_enabled": agent_config.get(
-            "courtlistener_search_enabled", False
-        ),
-        "courtlistener_opinion_access_enabled": agent_config.get(
-            "courtlistener_opinion_access_enabled", False
-        ),
+        "courtlistener_search_enabled": agent_config.get("courtlistener_search_enabled", False),
+        "courtlistener_opinion_access_enabled": agent_config.get("courtlistener_opinion_access_enabled", False),
         # Optional overrides for belief update calls only
         "belief_update_model_id": model_config.get("belief_update_model_id"),
         "belief_update_temperature": model_config.get("belief_update_temperature"),
-        "action_selection_prompt_constructor": BOEDActionSelectionPromptConstructor(
-            TASK_DOMAIN_KNOWLEDGE
-        ),
+        "action_selection_prompt_constructor": BOEDActionSelectionPromptConstructor(TASK_DOMAIN_KNOWLEDGE),
     }
     if method == "boed":
-        params["belief_update_prompt_constructor"] = BOEDBeliefUpdatePromptConstructor(
-            TASK_DOMAIN_KNOWLEDGE
-        )
-        params["prediction_prompt_constructor"] = BOEDPredictionPromptConstructor(
-            TASK_DOMAIN_KNOWLEDGE
-        )
+        params["belief_update_prompt_constructor"] = BOEDBeliefUpdatePromptConstructor(TASK_DOMAIN_KNOWLEDGE)
+        params["prediction_prompt_constructor"] = BOEDPredictionPromptConstructor(TASK_DOMAIN_KNOWLEDGE)
         params["task_belief_prior"] = TASK_BELIEF_PRIOR
     else:
-        params["belief_update_prompt_constructor"] = (
-            BOEDCitationTrackerBeliefUpdatePromptConstructor(TASK_DOMAIN_KNOWLEDGE)
+        params["belief_update_prompt_constructor"] = BOEDCitationTrackerBeliefUpdatePromptConstructor(
+            TASK_DOMAIN_KNOWLEDGE
         )
-        params["prediction_prompt_constructor"] = (
-            BOEDCitationTrackerPredictionPromptConstructor(TASK_DOMAIN_KNOWLEDGE)
-        )
+        params["prediction_prompt_constructor"] = BOEDCitationTrackerPredictionPromptConstructor(TASK_DOMAIN_KNOWLEDGE)
     return AGENT_REGISTRY[method](**params)
 
 
 # --- Episode runner ---
 
 
-def run_episode(
-    agent: Agent, environment: Environment, metrics_collector: MetricsCollector
-) -> dict[str, Any]:
+def run_episode(agent: Agent, environment: Environment, metrics_collector: MetricsCollector) -> dict[str, Any]:
     """Run a complete episode and collect metrics."""
     environment.reset()
     observation = environment.get_initial_observation()
@@ -296,22 +264,16 @@ def run_episode(
 
     if environment.max_steps == 0:
         # Non-agentic baseline: one direct prediction, no actions or belief updates.
-        logger.info(
-            "max_steps=0 detected - skipping action selection and requesting direct prediction."
-        )
+        logger.info("max_steps=0 detected - skipping action selection and requesting direct prediction.")
         for attempt in range(3):
             try:
                 final_response, _ = agent.get_current_prediction()
             except Exception as e:
-                logger.error(
-                    f"Direct prediction failed for max_steps=0 (attempt {attempt + 1}/3): {e}"
-                )
+                logger.error(f"Direct prediction failed for max_steps=0 (attempt {attempt + 1}/3): {e}")
                 final_response = None
             if final_response and str(final_response).strip():
                 break
-            logger.warning(
-                f"Direct prediction empty or invalid (attempt {attempt + 1}/3), retrying..."
-            )
+            logger.warning(f"Direct prediction empty or invalid (attempt {attempt + 1}/3), retrying...")
         if final_response is not None:
             agent.store_final_response(final_response)
     else:
@@ -380,13 +342,9 @@ def run_episode(
             )
 
     # The agent parses its own final response into the list that gets scored.
-    predicted_hallucinations = (
-        agent.last_final_response_list if final_response is not None else None
-    )
+    predicted_hallucinations = agent.last_final_response_list if final_response is not None else None
     # evaluate_entry accepts both a list of spans and a {span: type} dict.
-    metrics = compute_metrics(
-        *evaluate_entry(environment.key, predicted_hallucinations)
-    )
+    metrics = compute_metrics(*evaluate_entry(environment.key, predicted_hallucinations))
     current_beliefs = agent.get_current_beliefs()
 
     summary = {
@@ -420,20 +378,14 @@ def log_results(summary: dict[str, Any], method: str, example_id: str):
     logger.info(f"{TASK_NAME.upper()} - {method.upper()} - {example_id}")
     logger.info("=" * 60)
     logger.info(f"Model: {summary.get('model_used', 'Unknown')}")
-    logger.info(
-        f"Total Steps: {summary['total_steps']}  Terminated: {summary['terminated']}"
-    )
+    logger.info(f"Total Steps: {summary['total_steps']}  Terminated: {summary['terminated']}")
     if summary.get("final_response"):
         logger.info(f"Prediction: {summary['final_response']}")
-        logger.info(
-            f"Precision: {summary['precision']:.3f}  Recall: {summary['recall']:.3f}  F1: {summary['f1']:.3f}"
-        )
+        logger.info(f"Precision: {summary['precision']:.3f}  Recall: {summary['recall']:.3f}  F1: {summary['f1']:.3f}")
     if summary.get("task_beliefs"):
         logger.info(f"Task Beliefs: {summary['task_beliefs'][:200]}...")
     for i, step in enumerate(summary.get("history", []), 1):
-        logger.info(
-            f"Step {i}: {step['action'].action_type.value} {str(step['action'].get_input_parameters())[:150]}"
-        )
+        logger.info(f"Step {i}: {step['action'].action_type.value} {str(step['action'].get_input_parameters())[:150]}")
     logger.info("=" * 60)
 
 
@@ -470,9 +422,7 @@ def run_single_example(
             "example_id": example_id,
             "dataset": dataset,
             "method": method,
-            "example_sha256": hashlib.sha256(
-                json.dumps(example, sort_keys=True).encode()
-            ).hexdigest(),
+            "example_sha256": hashlib.sha256(json.dumps(example, sort_keys=True).encode()).hexdigest(),
             "ground_truth": extract_ground_truth(example),
             "model": model_id,
             "max_steps": max_steps,
@@ -496,9 +446,7 @@ def run_single_example(
             ),
         }
     )
-    agent = create_agent(
-        method, environment, model_api or ModelAPI(), model_config, agent_config
-    )
+    agent = create_agent(method, environment, model_api or ModelAPI(), model_config, agent_config)
 
     metrics_collector = MetricsCollector(
         save_dir=episode_metrics_dir(metrics_dir, dataset, model_id, method, max_steps)
@@ -523,10 +471,7 @@ def run_single_example(
         summary["langfuse_trace_id"] = trace_id
         summary["langfuse_run_id"] = run_context.get()["run_id"]
         score_metrics(
-            {
-                k: summary[k]
-                for k in ("precision", "recall", "f1", "accuracy", "total_steps")
-            },
+            {k: summary[k] for k in ("precision", "recall", "f1", "accuracy", "total_steps")},
             trace_id,
             example_id,
         )
@@ -536,17 +481,13 @@ def run_single_example(
     extra_data = {
         "list_hallucinations": ground_truth or [],
         "predicted_hallucinations": predicted,
-        "final_response_raw": summary.get(
-            "final_response"
-        ),  # agent response string before parsing
+        "final_response_raw": summary.get("final_response"),  # agent response string before parsing
         "langfuse_trace_id": trace_id,
         "langfuse_run_id": (run_context.get() or {}).get("run_id"),
         **compute_metrics(*evaluate_entry(ground_truth, predicted)),
     }
     no_response = summary.get("final_response") is None
-    summary["metrics_filepath"] = (
-        None if no_response else metrics_collector.end_episode(extra_data=extra_data)
-    )
+    summary["metrics_filepath"] = None if no_response else metrics_collector.end_episode(extra_data=extra_data)
     summary["episode_id"] = example_id
     summary["example_id"] = example_id
     langfuse.update_current_span(
@@ -588,17 +529,11 @@ def main(cfg: DictConfig):
         )
     # Dataset names the result folder (metrics/plots/output); defaults to TASK_NAME for consistency
     dataset = cfg.get("dataset") or TASK_NAME
-    logger.info(
-        f"Starting experiment: task={TASK_NAME}, method={method}, dataset={dataset}"
-    )
+    logger.info(f"Starting experiment: task={TASK_NAME}, method={method}, dataset={dataset}")
 
     data_config = OmegaConf.to_container(cfg.data, resolve=True)
-    paths_config = (
-        OmegaConf.to_container(cfg.paths, resolve=True) if "paths" in cfg else {}
-    )
-    search_config = (
-        OmegaConf.to_container(cfg.search, resolve=True) if "search" in cfg else {}
-    )
+    paths_config = OmegaConf.to_container(cfg.paths, resolve=True) if "paths" in cfg else {}
+    search_config = OmegaConf.to_container(cfg.search, resolve=True) if "search" in cfg else {}
     env_settings = OmegaConf.to_container(cfg.environment, resolve=True)
     agent_config = OmegaConf.to_container(cfg.agent, resolve=True)
     model_config = OmegaConf.to_container(cfg.agent.model, resolve=True)
@@ -637,9 +572,7 @@ def main(cfg: DictConfig):
             examples = examples[:limit]
             logger.info(f"Limited to {limit} examples")
         if data_config.get("skip_completed", True):
-            completed = get_completed_examples(
-                episode_metrics_dir(metrics_dir, dataset, model_id, method, max_steps)
-            )
+            completed = get_completed_examples(episode_metrics_dir(metrics_dir, dataset, model_id, method, max_steps))
             original_count = len(examples)
             examples = [ex for ex in examples if str(ex.get(id_field)) not in completed]
             logger.info(f"Skipping {original_count - len(examples)} completed examples")
@@ -697,18 +630,12 @@ def main(cfg: DictConfig):
             )
         finally:
             # Each episode has its own cache subdirectory; clear it so disk use does not accumulate.
-            clear_opinion_cache(
-                episode_opinion_cache_dir(
-                    paths_config, output_dir, model_id, method, max_steps, ex_id
-                )
-            )
+            clear_opinion_cache(episode_opinion_cache_dir(paths_config, output_dir, model_id, method, max_steps, ex_id))
 
     agg = publish_aggregate(results)
     if results:
         logger.info(f"\n{'=' * 60}")
-        logger.info(
-            f"BATCH COMPLETE ({TASK_NAME}): P={agg['precision']:.4f} R={agg['recall']:.4f} F1={agg['f1']:.4f}"
-        )
+        logger.info(f"BATCH COMPLETE ({TASK_NAME}): P={agg['precision']:.4f} R={agg['recall']:.4f} F1={agg['f1']:.4f}")
         logger.info(
             f"  ({agg['correct_predictions']:.0f}/{agg['total_predictions']:.0f} pred matched, "
             f"{agg['ground_truth_found']:.0f}/{agg['total_ground_truth']:.0f} GT found)"
@@ -718,9 +645,7 @@ def main(cfg: DictConfig):
         batch_results_path = Path(output_dir) / dataset / method / "batch_results.json"
         batch_results_path.parent.mkdir(parents=True, exist_ok=True)
         batch_data = {
-            "results": [
-                {k: v for k, v in r.items() if k != "history"} for r in results
-            ],
+            "results": [{k: v for k, v in r.items() if k != "history"} for r in results],
             "aggregate_metrics": agg,
         }
         with batch_results_path.open("w") as f:

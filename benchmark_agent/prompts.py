@@ -211,9 +211,7 @@ def build_action_guidelines(action_space: list[ActionType]) -> str:
                     f"does not have a 'description' attribute defined. This will cause suboptimal "
                     f"agent behavior as the agent won't understand what this action does."
                 )
-                description = (
-                    f"[WARNING: No description defined for {action_type.value}]"
-                )
+                description = f"[WARNING: No description defined for {action_type.value}]"
 
             # Warn if inputs are missing - this will also cause issues
             if not hasattr(action_class, "inputs") or not action_class.inputs:
@@ -258,7 +256,9 @@ def create_selection_actions_description(action_space: list[ActionType]) -> str:
     Returns:
         Formatted string describing available actions
     """
-    actions_desc = "You must select an action from the following list and provide the parameters for the selected action:\n"
+    actions_desc = (
+        "You must select an action from the following list and provide the parameters for the selected action:\n"
+    )
 
     for i, action_type in enumerate(action_space):
         action_class = get_action_class(action_type)
@@ -347,7 +347,9 @@ def format_observation_result(result: Any) -> str:
             result_text = f"Found {result['count']} results"
             if result.get("results"):
                 if "snippet" in result["results"][0]:
-                    result_text += f" (showing snippets of first {result.get('snippets_shown', len(result['results']))} results)"
+                    result_text += (
+                        f" (showing snippets of first {result.get('snippets_shown', len(result['results']))} results)"
+                    )
                     for i, result_item in enumerate(result["results"][:3]):
                         case_name = result_item.get("case_name", f"Case {i}")
                         snippet = (
@@ -738,7 +740,9 @@ class BOEDActionSelectionPromptConstructor(ActionSelectionPromptConstructor):
             if short_section:
                 theta_section = f"## Task\n{short_section}"
                 # Include θ/domain description so agent sees citation knowledge when choosing actions
-                theta_section += f"\n\n### Domain / task parameters (θ)\n{self.domain_knowledge.get_theta_description()}"
+                theta_section += (
+                    f"\n\n### Domain / task parameters (θ)\n{self.domain_knowledge.get_theta_description()}"
+                )
             else:
                 short_section = None
         else:
@@ -966,9 +970,7 @@ class BOEDPredictionPromptConstructor(PredictionPromptConstructor):
             sections.append(f"## Current Task Beliefs (θ)\n{task_beliefs}")
 
             if history:
-                history_text = format_action_history(
-                    history, max_actions=self.max_history_actions
-                )
+                history_text = format_action_history(history, max_actions=self.max_history_actions)
                 if history_text:
                     sections.append(f"## Action History\n{history_text}")
 
@@ -988,9 +990,7 @@ class BOEDPredictionPromptConstructor(PredictionPromptConstructor):
             else "Based on your current beliefs and observations, provide your final prediction."
         )
         reasoning_field = (
-            ""
-            if max_steps == 0
-            else ',\n  "reasoning": "<ALL your explanations, reasoning, and analysis go here>"'
+            "" if max_steps == 0 else ',\n  "reasoning": "<ALL your explanations, reasoning, and analysis go here>"'
         )
 
         return f"""{content}
@@ -1188,9 +1188,7 @@ class BOEDCitationTrackerPredictionPromptConstructor(PredictionPromptConstructor
         if max_steps == 0:
             # Direct prediction (no search steps): simplified intro + domain knowledge only
             theta_section = ""
-            if self.domain_knowledge and hasattr(
-                self.domain_knowledge, "get_domain_knowledge_description"
-            ):
+            if self.domain_knowledge and hasattr(self.domain_knowledge, "get_domain_knowledge_description"):
                 theta_desc = self.domain_knowledge.get_domain_knowledge_description()
                 theta_section = f"### Domain-Specific Definition\n{theta_desc}\n\n"
             return f"""You are a legal expert tasked with verifying case citations, quotes and holdings in briefs. Provide your best prediction based on the task description.

@@ -111,11 +111,7 @@ class MetricsCollector:
         self.step_count += 1
 
         # Extract basic step information
-        action_type = (
-            action.action_type.value
-            if hasattr(action, "action_type")
-            else str(type(action))
-        )
+        action_type = action.action_type.value if hasattr(action, "action_type") else str(type(action))
         action_content = self._extract_action_content(action)
 
         # Initialize step metrics
@@ -136,9 +132,7 @@ class MetricsCollector:
 
         logger.info(f"Recorded metrics for step {self.step_count}: {action_type}")
 
-    def end_episode(
-        self, final_outcome: str | None = None, extra_data: dict[str, Any] | None = None
-    ) -> str:
+    def end_episode(self, final_outcome: str | None = None, extra_data: dict[str, Any] | None = None) -> str:
         """
         End the current episode and save metrics.
 
@@ -213,9 +207,7 @@ def log_section(title: str, char: str = "="):
 # =============================================================================
 
 
-def log_initial_state(
-    agent: "Agent", environment: "Environment", observation, task_name: str
-):
+def log_initial_state(agent: "Agent", environment: "Environment", observation, task_name: str):
     log_section(f"STARTING {task_name.upper()} EPISODE")
 
     log_section("INITIAL STATE")
@@ -263,12 +255,8 @@ def log_action_basic(action) -> str:
 
 def log_final_response(action, observation) -> tuple:
     final_response = getattr(action, "response", "")
-    is_correct = (
-        observation.metadata.get("is_correct") if observation.metadata else None
-    )
-    accuracy = (
-        observation.metadata.get("accuracy", None) if observation.metadata else None
-    )
+    is_correct = observation.metadata.get("is_correct") if observation.metadata else None
+    accuracy = observation.metadata.get("accuracy", None) if observation.metadata else None
 
     logger.info(f"  Prediction: {final_response}")
     accuracy_str = f"{accuracy:.3f}" if accuracy is not None else "N/A"

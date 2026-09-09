@@ -70,9 +70,7 @@ class Action:
         """
         # Get the inputs specification from the class
         if not hasattr(self, "inputs"):
-            raise ValueError(
-                f"Action class {self.__class__.__name__} must define an 'inputs' class attribute"
-            )
+            raise ValueError(f"Action class {self.__class__.__name__} must define an 'inputs' class attribute")
 
         inputs_spec = self.inputs
 
@@ -87,13 +85,10 @@ class Action:
         # Validate that all required inputs are provided
         for input_name, input_spec in inputs_spec.items():
             # Check if the input is optional
-            is_required = input_spec.get(
-                "required", True
-            )  # Default to required if not specified
+            is_required = input_spec.get("required", True)  # Default to required if not specified
             if is_required and input_name not in kwargs:
                 raise ValueError(
-                    f"Required input '{input_name}' is missing. "
-                    f"Available inputs: {list(inputs_spec.keys())}"
+                    f"Required input '{input_name}' is missing. Available inputs: {list(inputs_spec.keys())}"
                 )
 
         # Validate parameter types against input types
@@ -104,17 +99,13 @@ class Action:
 
                 # Skip validation for None values (optional parameters)
                 if param_value is not None and expected_type is not None:
-                    self._validate_parameter_type(
-                        param_value, expected_type, input_name
-                    )
+                    self._validate_parameter_type(param_value, expected_type, input_name)
 
         # Store every input as an attribute; omitted optional inputs take the spec default.
         for input_name, input_spec in inputs_spec.items():
             setattr(self, input_name, kwargs.get(input_name, input_spec.get("default")))
 
-    def _validate_parameter_type(
-        self, value: Any, expected_type: str, param_name: str
-    ) -> None:
+    def _validate_parameter_type(self, value: Any, expected_type: str, param_name: str) -> None:
         """
         Validate that a parameter value matches the expected type.
 
@@ -154,9 +145,7 @@ class Action:
 
         # Validate the type
         if not isinstance(value, expected_python_type):
-            raise TypeError(
-                f"Parameter '{param_name}' must be a {expected_type}, got {type(value).__name__}"
-            )
+            raise TypeError(f"Parameter '{param_name}' must be a {expected_type}, got {type(value).__name__}")
 
     def get_input_parameters(self) -> dict[str, Any]:
         parameters = {}
@@ -190,9 +179,7 @@ def get_action_class(action_type: ActionType) -> type[Action]:
         KeyError: If the action_type is not found in the mapping
     """
     if action_type not in _action_registry:
-        raise KeyError(
-            f"ActionType '{action_type.value}' not found. Available types: {list(_action_registry.keys())}"
-        )
+        raise KeyError(f"ActionType '{action_type.value}' not found. Available types: {list(_action_registry.keys())}")
     return _action_registry[action_type]
 
 
